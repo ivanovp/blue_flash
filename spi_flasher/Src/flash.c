@@ -81,6 +81,9 @@ extern SPI_HandleTypeDef hspi1;
 
 static SPI_HandleTypeDef *spi = &hspi1;
 static bool_t flash_initialized = FALSE;
+static const uint8_t cmd_dummy[1]            = { 0xFF };
+static const uint8_t cmd_power_up[4]         = { 0xAB, 0, 0, 0 };
+static const uint8_t cmd_power_down[1]       = { 0xB9 };
 static const uint8_t cmd_read_id[1]          = { 0x9F };
 static const uint8_t cmd_read_status_reg[1]  = { 0x05 };
 #if PIFS_FLASH_4BYTE_ADDRESS
@@ -195,6 +198,15 @@ pifs_status_t pifs_flash_init(void)
     {
         ret = PIFS_ERROR_FLASH_INIT;
         SET_CS_LOW();
+        if (HAL_SPI_Transmit(spi, cmd_power_up, sizeof(cmd_power_up), FLASH_TIMEOUT_TICK) == HAL_OK)
+        {
+        }
+        SET_CS_HIGH();
+        /* Waste some time */
+        if (HAL_SPI_Transmit(spi, cmd_dummy, sizeof(cmd_dummy), FLASH_TIMEOUT_TICK) == HAL_OK)
+        {
+        }
+        SET_CS_LOW();
         if (HAL_SPI_Transmit(spi, cmd_read_id, sizeof(cmd_read_id), FLASH_TIMEOUT_TICK) == HAL_OK)
         {
             if (HAL_SPI_Receive(spi, answer, 3, FLASH_TIMEOUT_TICK) == HAL_OK)
@@ -257,6 +269,11 @@ pifs_status_t pifs_flash_delete(void)
     if (osSemaphoreDelete(dma_finished) == osOK)
 #endif
     {
+        SET_CS_LOW();
+        if (HAL_SPI_Transmit(spi, cmd_power_down, sizeof(cmd_power_down), FLASH_TIMEOUT_TICK) == HAL_OK)
+        {
+        }
+        SET_CS_HIGH();
         flash_initialized = FALSE;
         ret = PIFS_SUCCESS;
     }

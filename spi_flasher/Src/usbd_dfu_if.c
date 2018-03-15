@@ -50,7 +50,7 @@
 #include "usbd_dfu_if.h"
 
 /* USER CODE BEGIN INCLUDE */
-
+#include "flash.h"
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -183,7 +183,14 @@ __ALIGN_BEGIN USBD_DFU_MediaTypeDef USBD_DFU_fops_FS __ALIGN_END =
 uint16_t MEM_If_Init_FS(void)
 {
   /* USER CODE BEGIN 0 */
-  return (USBD_OK);
+	uint16_t ret = USBD_FAIL;
+
+	//if (pifs_flash_init() == PIFS_SUCCESS)
+	{
+		ret = USBD_OK;
+	}
+
+	return ret;
   /* USER CODE END 0 */
 }
 

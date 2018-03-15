@@ -53,19 +53,34 @@
 #include "usb_device.h"
 
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
+#include <string.h>
+#include <stdarg.h>
+#include "common.h"
+#include "uart.h"
 
+#define DISABLE_WATCHDOG_MAGIC  0xDEADBEEF
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
+IWDG_HandleTypeDef hiwdg;
+
 SPI_HandleTypeDef hspi1;
 DMA_HandleTypeDef hdma_spi1_rx;
 DMA_HandleTypeDef hdma_spi1_tx;
+
+UART_HandleTypeDef huart1;
 
 osThreadId defaultTaskHandle;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 
+osThreadId watchdogTaskHandle;
+osMutexDef(printf_mutex);
+osMutexId printf_mutex = NULL;
+uint32_t disableWatchdog = 0;
+extern void defaultTask(void const * argument);
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -73,15 +88,31 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_USART1_UART_Init(void);
+static void MX_IWDG_Init(void);
 void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
 
+void watchdogTask(void const * arg);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
+static inline void LED_on(void)
+{
+    HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_SET);
+}
 
+static inline void LED_off(void)
+{
+    HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_RESET);
+}
+
+static inline void LED_toggle(void)
+{
+    HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+}
 /* USER CODE END 0 */
 
 /**
@@ -109,18 +140,38 @@ int main(void)
 
   /* USER CODE BEGIN SysInit */
 
+  /* Enable division by zero fault */
+  SCB->CCR |= 0x10;
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_SPI1_Init();
+  MX_USART1_UART_Init();
+  MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
 
+  srand(time(0));
+  UART_printf_("\r\n\r\nBoard initialized\r\n");
+#if DEBUG == 1
+  UART_printf_("DEBUG\r\n");
+#else
+  UART_printf_("RELEASE\r\n");
+#endif
+  UART_printf_("Compiled on " __DATE__ " " __TIME__ "\r\n");
+#if ENABLE_WATCHDOG
+  UART_printf_("Watchdog started\r\n");
+  HAL_IWDG_Refresh(&hiwdg);
+#else
+  UART_printf_("Watchdog disabled\r\n");
+#endif
+  setbuf(stdout, NULL);
+  printf("+++ printf test! +++\r\n");
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
+  printf_mutex = osMutexCreate(osMutex(printf_mutex));
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -137,7 +188,8 @@ int main(void)
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+  osThreadDef(watchdogTask, watchdogTask, osPriorityNormal, 0, 64);
+  watchdogTaskHandle = osThreadCreate(osThread(watchdogTask), NULL);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
@@ -177,10 +229,11 @@ void SystemClock_Config(void)
 
     /**Initializes the CPU, AHB and APB busses clocks 
     */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL6;
@@ -222,6 +275,20 @@ void SystemClock_Config(void)
   HAL_NVIC_SetPriority(SysTick_IRQn, 15, 0);
 }
 
+/* IWDG init function */
+static void MX_IWDG_Init(void)
+{
+
+  hiwdg.Instance = IWDG;
+  hiwdg.Init.Prescaler = IWDG_PRESCALER_32;
+  hiwdg.Init.Reload = 1000;
+  if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+
 /* SPI1 init function */
 static void MX_SPI1_Init(void)
 {
@@ -240,6 +307,25 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi1.Init.CRCPolynomial = 10;
   if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+
+/* USART1 init function */
+static void MX_USART1_UART_Init(void)
+{
+
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
@@ -277,11 +363,21 @@ static void MX_GPIO_Init(void)
   GPIO_InitTypeDef GPIO_InitStruct;
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, CRESET_Pin|SPI1_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, CRESET_Pin|SPI_CS_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : LED_RED_Pin */
+  GPIO_InitStruct.Pin = LED_RED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LED_RED_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : CDONE_Pin */
   GPIO_InitStruct.Pin = CDONE_Pin;
@@ -289,8 +385,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(CDONE_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : CRESET_Pin SPI1_CS_Pin */
-  GPIO_InitStruct.Pin = CRESET_Pin|SPI1_CS_Pin;
+  /*Configure GPIO pins : CRESET_Pin SPI_CS_Pin */
+  GPIO_InitStruct.Pin = CRESET_Pin|SPI_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -298,7 +394,44 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+ * @brief watchdogTask LED blinking and watchdog reloading task.
+ * @param arg
+ */
+void watchdogTask(void const * arg)
+{
+	(void) arg;
 
+	for ( ; ; )
+	{
+#if ENABLE_WATCHDOG
+        /*
+         * Watchdog's timeout is 800 ms
+         * Oscillator clock (LSI) = 40 kHz
+         * Prescaler = /32
+         * Down counter reload value = 1000
+         * Timeout = 1 / ( 40000 / 32 ) * 1000 = 0.8 seconds
+         */
+        if (disableWatchdog != DISABLE_WATCHDOG_MAGIC)
+        {
+            /* Feed the watchdog */
+            HAL_IWDG_Refresh(&hiwdg);
+        }
+#endif
+        LED_toggle();
+        osDelay(500);
+    }
+}
+
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
+{
+    _print("\r\nStack overflow in task ");
+    _print(pcTaskName);
+    _print("\r\n");
+    while(1)
+    {
+    }
+}
 /* USER CODE END 4 */
 
 /* StartDefaultTask function */
@@ -346,10 +479,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void _Error_Handler(char *file, int line)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  while(1)
-  {
-  }
+    _print("\r\nFatal error in file ");
+    _print(file);
+    _print("at line 0x");
+    _printHex32(line);
+    _print("\r\n");
+    /* User can add his own implementation to report the HAL error return state */
+    while(1)
+    {
+    }
   /* USER CODE END Error_Handler_Debug */
 }
 

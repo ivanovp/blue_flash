@@ -50,7 +50,9 @@
 #include "usbd_dfu_if.h"
 
 /* USER CODE BEGIN INCLUDE */
+#include "common.h"
 #include "flash.h"
+#include "uart.h"
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,7 +61,7 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-
+uint8_t page_buf[USBD_DFU_XFER_SIZE];
 /* USER CODE END PV */
 
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
@@ -90,7 +92,7 @@
   * @{
   */
 
-#define FLASH_DESC_STR      "@Internal Flash   /0x08000000/03*016Ka,01*016Kg,01*064Kg,07*128Kg,04*016Kg,01*064Kg,07*128Kg"
+#define FLASH_DESC_STR      "@SPI Flash/0x00000000/32*064Kg"
 
 /* USER CODE BEGIN PRIVATE_DEFINES */
 
@@ -184,10 +186,20 @@ uint16_t MEM_If_Init_FS(void)
 {
   /* USER CODE BEGIN 0 */
 	uint16_t ret = USBD_FAIL;
+	pifs_status_t fl_ret;
 
-	//if (pifs_flash_init() == PIFS_SUCCESS)
+    SET_CRESET_ON();
+
+	fl_ret = pifs_flash_init();
+	if (fl_ret == PIFS_SUCCESS)
 	{
+		UART_printf("Flash initialized\r\n");
 		ret = USBD_OK;
+	}
+	else
+	{
+        UART_printf("ERROR: cannot initialize flash! Status: %i\r\n", fl_ret);
+        SET_CRESET_OFF();
 	}
 
 	return ret;
@@ -201,7 +213,23 @@ uint16_t MEM_If_Init_FS(void)
 uint16_t MEM_If_DeInit_FS(void)
 {
   /* USER CODE BEGIN 1 */
-  return (USBD_OK);
+	uint16_t ret = USBD_FAIL;
+	pifs_status_t fl_ret;
+
+	fl_ret = pifs_flash_delete();
+	if (fl_ret == PIFS_SUCCESS)
+	{
+		UART_printf("Flash de-initialized\r\n");
+		ret = USBD_OK;
+	}
+	else
+	{
+		UART_printf("ERROR: cannot de-initialize flash! Status: %i\r\n", fl_ret);
+    }
+
+    SET_CRESET_OFF();
+
+	return ret;
   /* USER CODE END 1 */
 }
 
@@ -213,8 +241,25 @@ uint16_t MEM_If_DeInit_FS(void)
 uint16_t MEM_If_Erase_FS(uint32_t Add)
 {
   /* USER CODE BEGIN 2 */
+	uint16_t ret = USBD_FAIL;
+	pifs_block_address_t ba;
+	pifs_status_t fl_ret;
 
-  return (USBD_OK);
+//    SET_CRESET_ON();
+
+    ba = Add / PIFS_FLASH_BLOCK_SIZE_BYTE;
+	fl_ret = pifs_flash_erase(ba);
+	if (fl_ret == PIFS_SUCCESS)
+	{
+		UART_printf("Erased block %i\r\n", ba);
+		ret = USBD_OK;
+	}
+	else
+	{
+		UART_printf("ERROR: cannot erase block! Status: %i\r\n", fl_ret);
+	}
+
+	return ret;
   /* USER CODE END 2 */
 }
 
@@ -228,7 +273,30 @@ uint16_t MEM_If_Erase_FS(uint32_t Add)
 uint16_t MEM_If_Write_FS(uint8_t *src, uint8_t *dest, uint32_t Len)
 {
   /* USER CODE BEGIN 3 */
-  return (USBD_OK);
+	uint16_t ret = USBD_FAIL;
+	pifs_block_address_t ba;
+	pifs_page_address_t  pa;
+	pifs_page_offset_t   ofs;
+	uintptr_t addr = (uintptr_t) dest;
+	pifs_status_t fl_ret;
+
+//    SET_CRESET_ON();
+
+	ba = addr / PIFS_FLASH_BLOCK_SIZE_BYTE;
+	pa = (addr % PIFS_FLASH_BLOCK_SIZE_BYTE) / PIFS_FLASH_PAGE_SIZE_BYTE;
+	ofs = (addr % PIFS_FLASH_BLOCK_SIZE_BYTE) % PIFS_FLASH_PAGE_SIZE_BYTE;
+	fl_ret = pifs_flash_write(ba, pa, ofs, src, Len);
+	if (fl_ret == PIFS_SUCCESS)
+	{
+		UART_printf("Written block %i, page %i\r\n", ba, pa);
+		ret = USBD_OK;
+	}
+	else
+	{
+		UART_printf("ERROR: cannot write! Status: %i\r\n", fl_ret);
+	}
+
+	return ret;
   /* USER CODE END 3 */
 }
 
@@ -243,7 +311,28 @@ uint8_t *MEM_If_Read_FS(uint8_t *src, uint8_t *dest, uint32_t Len)
 {
   /* Return a valid address to avoid HardFault */
   /* USER CODE BEGIN 4 */
-  return (uint8_t*)(USBD_OK);
+	pifs_block_address_t ba;
+	pifs_page_address_t  pa;
+	pifs_page_offset_t   ofs;
+    uintptr_t            addr = (uintptr_t) src;
+    pifs_status_t        fl_ret;
+
+//    SET_CRESET_ON();
+
+    ba = addr / PIFS_FLASH_BLOCK_SIZE_BYTE;
+    pa = (addr % PIFS_FLASH_BLOCK_SIZE_BYTE) / PIFS_FLASH_PAGE_SIZE_BYTE;
+    ofs = (addr % PIFS_FLASH_BLOCK_SIZE_BYTE) % PIFS_FLASH_PAGE_SIZE_BYTE;
+    fl_ret = pifs_flash_read(ba, pa, ofs, page_buf, Len);
+    if (fl_ret == PIFS_SUCCESS)
+    {
+        UART_printf("Read block %i, page %i\r\n", ba, pa);
+    }
+    else
+    {
+        UART_printf("ERROR: cannot read! Status: %i\r\n", fl_ret);
+    }
+
+	return page_buf;
   /* USER CODE END 4 */
 }
 
@@ -257,18 +346,20 @@ uint8_t *MEM_If_Read_FS(uint8_t *src, uint8_t *dest, uint32_t Len)
 uint16_t MEM_If_GetStatus_FS(uint32_t Add, uint8_t Cmd, uint8_t *buffer)
 {
   /* USER CODE BEGIN 5 */
-  switch (Cmd)
-  {
-    case DFU_MEDIA_PROGRAM:
+    UART_printf("Get status, add: 0x%X, cmd: %i, buf: 0x%X\r\n", Add, Cmd, buffer);
 
-    break;
+    switch (Cmd)
+    {
+        case DFU_MEDIA_PROGRAM:
 
-    case DFU_MEDIA_ERASE:
-    default:
+            break;
 
-    break;
-  }
-  return (USBD_OK);
+        case DFU_MEDIA_ERASE:
+        default:
+
+            break;
+    }
+    return (USBD_OK);
   /* USER CODE END 5 */
 }
 

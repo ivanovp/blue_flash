@@ -48,4 +48,7 @@ typedef unsigned char bool_t;
 
 #define ENABLE_WATCHDOG 1
 
+#define SET_CRESET_ON()     HAL_GPIO_WritePin(CRESET_GPIO_Port, CRESET_Pin, GPIO_PIN_RESET);
+#define SET_CRESET_OFF()    HAL_GPIO_WritePin(CRESET_GPIO_Port, CRESET_Pin, GPIO_PIN_SET);
+
 #endif /* _INCLUDE_COMMON_H_ */

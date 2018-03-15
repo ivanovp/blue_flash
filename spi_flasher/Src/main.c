@@ -79,6 +79,8 @@ osThreadId defaultTaskHandle;
 osThreadId watchdogTaskHandle;
 osMutexDef(printf_mutex);
 osMutexId printf_mutex = NULL;
+osSemaphoreDef(creset_sem);
+osSemaphoreId creset_sem = NULL;
 uint32_t disableWatchdog = 0;
 extern void defaultTask(void const * argument);
 /* USER CODE END PV */
@@ -95,6 +97,8 @@ void StartDefaultTask(void const * argument);
 /* Private function prototypes -----------------------------------------------*/
 
 void watchdogTask(void const * arg);
+extern uint16_t flash_deinit(void);
+extern void release_flash_interface(void);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
@@ -166,7 +170,6 @@ int main(void)
 #endif
   setbuf(stdout, NULL);
   printf("+++ printf test! +++\r\n");
-  SET_CRESET_OFF(); // set RESET HIGH, let FPGA run
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -174,7 +177,7 @@ int main(void)
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
-  /* add semaphores, ... */
+  creset_sem = osSemaphoreCreate(osSemaphore(creset_sem), 1);
   /* USER CODE END RTOS_SEMAPHORES */
 
   /* USER CODE BEGIN RTOS_TIMERS */
@@ -425,10 +428,15 @@ void StartDefaultTask(void const * argument)
   MX_USB_DEVICE_Init();
 
   /* USER CODE BEGIN 5 */
+  release_flash_interface();
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+      /* After 2 seconds, release CRESET automatically to let the FPGA run */
+      if (osSemaphoreWait(creset_sem, 2000) != osOK)
+      {
+          flash_deinit();
+      }
   }
   /* USER CODE END 5 */ 
 }

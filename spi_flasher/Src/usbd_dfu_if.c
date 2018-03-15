@@ -53,6 +53,7 @@
 #include "common.h"
 #include "flash.h"
 #include "uart.h"
+#include "cmsis_os.h"
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -61,7 +62,10 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
+bool_t flash_is_initialized = FALSE;
 uint8_t page_buf[USBD_DFU_XFER_SIZE];
+extern osSemaphoreId creset_sem;
+extern SPI_HandleTypeDef hspi1;
 /* USER CODE END PV */
 
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
@@ -156,7 +160,8 @@ static uint16_t MEM_If_DeInit_FS(void);
 static uint16_t MEM_If_GetStatus_FS(uint32_t Add, uint8_t Cmd, uint8_t *buffer);
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_DECLARATION */
-
+uint16_t flash_init(void);
+uint16_t flash_deinit(void);
 /* USER CODE END PRIVATE_FUNCTIONS_DECLARATION */
 
 /**
@@ -185,24 +190,7 @@ __ALIGN_BEGIN USBD_DFU_MediaTypeDef USBD_DFU_fops_FS __ALIGN_END =
 uint16_t MEM_If_Init_FS(void)
 {
   /* USER CODE BEGIN 0 */
-	uint16_t ret = USBD_FAIL;
-	pifs_status_t fl_ret;
-
-    SET_CRESET_ON();
-
-	fl_ret = pifs_flash_init();
-	if (fl_ret == PIFS_SUCCESS)
-	{
-		UART_printf("Flash initialized\r\n");
-		ret = USBD_OK;
-	}
-	else
-	{
-        UART_printf("ERROR: cannot initialize flash! Status: %i\r\n", fl_ret);
-        SET_CRESET_OFF();
-	}
-
-	return ret;
+    return USBD_OK;
   /* USER CODE END 0 */
 }
 
@@ -213,23 +201,11 @@ uint16_t MEM_If_Init_FS(void)
 uint16_t MEM_If_DeInit_FS(void)
 {
   /* USER CODE BEGIN 1 */
-	uint16_t ret = USBD_FAIL;
-	pifs_status_t fl_ret;
+    uint16_t ret = USBD_FAIL;
 
-	fl_ret = pifs_flash_delete();
-	if (fl_ret == PIFS_SUCCESS)
-	{
-		UART_printf("Flash de-initialized\r\n");
-		ret = USBD_OK;
-	}
-	else
-	{
-		UART_printf("ERROR: cannot de-initialize flash! Status: %i\r\n", fl_ret);
-    }
+    ret = flash_deinit();
 
-    SET_CRESET_OFF();
-
-	return ret;
+    return ret;
   /* USER CODE END 1 */
 }
 
@@ -245,19 +221,24 @@ uint16_t MEM_If_Erase_FS(uint32_t Add)
 	pifs_block_address_t ba;
 	pifs_status_t fl_ret;
 
-//    SET_CRESET_ON();
+    ret = flash_init();
+    if (ret == USBD_OK)
+    {
+        osSemaphoreRelease(creset_sem);
+        SET_CRESET_ON();
 
-    ba = Add / PIFS_FLASH_BLOCK_SIZE_BYTE;
-	fl_ret = pifs_flash_erase(ba);
-	if (fl_ret == PIFS_SUCCESS)
-	{
-		UART_printf("Erased block %i\r\n", ba);
-		ret = USBD_OK;
-	}
-	else
-	{
-		UART_printf("ERROR: cannot erase block! Status: %i\r\n", fl_ret);
-	}
+        ba = Add / PIFS_FLASH_BLOCK_SIZE_BYTE;
+        fl_ret = pifs_flash_erase(ba);
+        if (fl_ret == PIFS_SUCCESS)
+        {
+            UART_printf("Erased block %i\r\n", ba);
+            ret = USBD_OK;
+        }
+        else
+        {
+            UART_printf("ERROR: cannot erase block! Status: %i\r\n", fl_ret);
+        }
+    }
 
 	return ret;
   /* USER CODE END 2 */
@@ -280,21 +261,26 @@ uint16_t MEM_If_Write_FS(uint8_t *src, uint8_t *dest, uint32_t Len)
 	uintptr_t addr = (uintptr_t) dest;
 	pifs_status_t fl_ret;
 
-//    SET_CRESET_ON();
+    ret = flash_init();
+    if (ret == USBD_OK)
+    {
+        osSemaphoreRelease(creset_sem);
+        SET_CRESET_ON();
 
-	ba = addr / PIFS_FLASH_BLOCK_SIZE_BYTE;
-	pa = (addr % PIFS_FLASH_BLOCK_SIZE_BYTE) / PIFS_FLASH_PAGE_SIZE_BYTE;
-	ofs = (addr % PIFS_FLASH_BLOCK_SIZE_BYTE) % PIFS_FLASH_PAGE_SIZE_BYTE;
-	fl_ret = pifs_flash_write(ba, pa, ofs, src, Len);
-	if (fl_ret == PIFS_SUCCESS)
-	{
-		UART_printf("Written block %i, page %i\r\n", ba, pa);
-		ret = USBD_OK;
-	}
-	else
-	{
-		UART_printf("ERROR: cannot write! Status: %i\r\n", fl_ret);
-	}
+        ba = addr / PIFS_FLASH_BLOCK_SIZE_BYTE;
+        pa = (addr % PIFS_FLASH_BLOCK_SIZE_BYTE) / PIFS_FLASH_PAGE_SIZE_BYTE;
+        ofs = (addr % PIFS_FLASH_BLOCK_SIZE_BYTE) % PIFS_FLASH_PAGE_SIZE_BYTE;
+        fl_ret = pifs_flash_write(ba, pa, ofs, src, Len);
+        if (fl_ret == PIFS_SUCCESS)
+        {
+            UART_printf("Written block %i, page %i\r\n", ba, pa);
+            ret = USBD_OK;
+        }
+        else
+        {
+            UART_printf("ERROR: cannot write! Status: %i\r\n", fl_ret);
+        }
+    }
 
 	return ret;
   /* USER CODE END 3 */
@@ -311,25 +297,31 @@ uint8_t *MEM_If_Read_FS(uint8_t *src, uint8_t *dest, uint32_t Len)
 {
   /* Return a valid address to avoid HardFault */
   /* USER CODE BEGIN 4 */
+	uint16_t             ret;
 	pifs_block_address_t ba;
 	pifs_page_address_t  pa;
 	pifs_page_offset_t   ofs;
     uintptr_t            addr = (uintptr_t) src;
     pifs_status_t        fl_ret;
 
-//    SET_CRESET_ON();
+    ret = flash_init();
+    if (ret == USBD_OK)
+    {
+        osSemaphoreRelease(creset_sem);
+        SET_CRESET_ON();
 
-    ba = addr / PIFS_FLASH_BLOCK_SIZE_BYTE;
-    pa = (addr % PIFS_FLASH_BLOCK_SIZE_BYTE) / PIFS_FLASH_PAGE_SIZE_BYTE;
-    ofs = (addr % PIFS_FLASH_BLOCK_SIZE_BYTE) % PIFS_FLASH_PAGE_SIZE_BYTE;
-    fl_ret = pifs_flash_read(ba, pa, ofs, page_buf, Len);
-    if (fl_ret == PIFS_SUCCESS)
-    {
-        UART_printf("Read block %i, page %i\r\n", ba, pa);
-    }
-    else
-    {
-        UART_printf("ERROR: cannot read! Status: %i\r\n", fl_ret);
+        ba = addr / PIFS_FLASH_BLOCK_SIZE_BYTE;
+        pa = (addr % PIFS_FLASH_BLOCK_SIZE_BYTE) / PIFS_FLASH_PAGE_SIZE_BYTE;
+        ofs = (addr % PIFS_FLASH_BLOCK_SIZE_BYTE) % PIFS_FLASH_PAGE_SIZE_BYTE;
+        fl_ret = pifs_flash_read(ba, pa, ofs, page_buf, Len);
+        if (fl_ret == PIFS_SUCCESS)
+        {
+            UART_printf("Read block %i, page %i\r\n", ba, pa);
+        }
+        else
+        {
+            UART_printf("ERROR: cannot read! Status: %i\r\n", fl_ret);
+        }
     }
 
 	return page_buf;
@@ -346,25 +338,127 @@ uint8_t *MEM_If_Read_FS(uint8_t *src, uint8_t *dest, uint32_t Len)
 uint16_t MEM_If_GetStatus_FS(uint32_t Add, uint8_t Cmd, uint8_t *buffer)
 {
   /* USER CODE BEGIN 5 */
+    uint16_t ret = USBD_FAIL;
+
     UART_printf("Get status, add: 0x%X, cmd: %i, buf: 0x%X\r\n", Add, Cmd, buffer);
 
-    switch (Cmd)
+    ret = flash_init();
+    if (ret == USBD_OK)
     {
-        case DFU_MEDIA_PROGRAM:
+        osSemaphoreRelease(creset_sem);
+        SET_CRESET_ON();
 
-            break;
+        switch (Cmd)
+        {
+            case DFU_MEDIA_PROGRAM:
 
-        case DFU_MEDIA_ERASE:
-        default:
+                break;
 
-            break;
+            case DFU_MEDIA_ERASE:
+            default:
+
+                break;
+        }
     }
-    return (USBD_OK);
+
+    return ret;
   /* USER CODE END 5 */
 }
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_IMPLEMENTATION */
+uint16_t flash_init(void)
+{
+    uint16_t ret = USBD_FAIL;
+    pifs_status_t fl_ret;
+    GPIO_InitTypeDef GPIO_InitStruct;
 
+    if (!flash_is_initialized)
+    {
+        SET_CRESET_ON();
+
+        if (HAL_SPI_Init(&hspi1) != HAL_OK)
+        {
+            _Error_Handler(__FILE__, __LINE__);
+        }
+
+        GPIO_InitStruct.Pin = SPI_CS_Pin;
+        GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+        HAL_GPIO_Init(SPI_CS_GPIO_Port, &GPIO_InitStruct);
+
+        fl_ret = pifs_flash_init();
+        if (fl_ret == PIFS_SUCCESS)
+        {
+            UART_printf("Flash initialized\r\n");
+            ret = USBD_OK;
+            flash_is_initialized = TRUE;
+        }
+        else
+        {
+            UART_printf("ERROR: cannot initialize flash! Status: %i\r\n", fl_ret);
+            SET_CRESET_OFF();
+        }
+    }
+    else
+    {
+        ret = USBD_OK;
+    }
+
+    return ret;
+}
+
+void release_flash_interface(void)
+{
+    GPIO_InitTypeDef GPIO_InitStruct;
+
+    UART_printf("Release CRESET\r\n");
+    SET_CRESET_OFF();
+    osDelay(100);
+    HAL_SPI_DeInit(&hspi1);
+    UART_printf("SPI deinitialized\r\n");
+    GPIO_InitStruct.Pin = SPI_CS_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(SPI_CS_GPIO_Port, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    UART_printf("GPIO pins released\r\n");
+
+    UART_printf("Set CRESET\r\n");
+    SET_CRESET_ON();
+    osDelay(50);
+    UART_printf("Release CRESET\r\n");
+    SET_CRESET_OFF();
+}
+
+uint16_t flash_deinit(void)
+{
+    uint16_t ret = USBD_FAIL;
+    pifs_status_t fl_ret;
+
+    if (flash_is_initialized)
+    {
+        fl_ret = pifs_flash_delete();
+        if (fl_ret == PIFS_SUCCESS)
+        {
+            UART_printf("Flash de-initialized\r\n");
+
+            release_flash_interface();
+
+            ret = USBD_OK;
+            flash_is_initialized = FALSE;
+        }
+        else
+        {
+            UART_printf("ERROR: cannot de-initialize flash! Status: %i\r\n", fl_ret);
+        }
+    }
+
+    return ret;
+}
 /* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */
 
 /**

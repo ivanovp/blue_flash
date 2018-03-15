@@ -46,7 +46,7 @@ typedef unsigned char bool_t;
 #define ASCII_QUOTE         ('"')
 #define ASCII_APOSTROPHE    ('\'')
 
-#define ENABLE_WATCHDOG 1
+#define ENABLE_WATCHDOG     0
 
 #define SET_CRESET_ON()     HAL_GPIO_WritePin(CRESET_GPIO_Port, CRESET_Pin, GPIO_PIN_RESET);
 #define SET_CRESET_OFF()    HAL_GPIO_WritePin(CRESET_GPIO_Port, CRESET_Pin, GPIO_PIN_SET);

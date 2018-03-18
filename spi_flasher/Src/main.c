@@ -469,8 +469,8 @@ void StartDefaultTask(void const * argument)
   /* Infinite loop */
   for(;;)
   {
-      /* After 2 seconds, release CRESET automatically to let the FPGA run */
-      if (osSemaphoreWait(creset_sem, 2000) != osOK)
+      /* After 250 milliseconds, release CRESET automatically to let the FPGA run */
+      if (osSemaphoreWait(creset_sem, 250) != osOK)
       {
           dfu_flash_deinit();
       }

@@ -120,7 +120,7 @@ static uint8_t answer[3];
 static osSemaphoreId dma_finished;
 osSemaphoreDef(dma_finished);
 #endif
-static uint32_t sector_count = 0;
+static uint32_t flash_block_num_all = 0;
 
 #if FLASH_ENABLE_DMA
 /**
@@ -232,9 +232,9 @@ flash_status_t flash_init(void)
             {
 #if FLASH_TYPE == FLASH_TYPE_M25P40
                 if (answer[0] == 0x20 && answer[1] == 0x20 && answer[2] == 0x13)
-#elif FLASH_TYPE == FLASH_TYPE_W25Q16DV_4K || FLASH_TYPE == FLASH_TYPE_W25Q16DV_32K || FLASH_TYPE == FLASH_TYPE_W25Q16DV_64K
+#elif FLASH_TYPE == FLASH_TYPE_W25Q16DV_64K
                 if (answer[0] == 0xEF && answer[1] == 0x40 && answer[2] == 0x15)
-#elif FLASH_TYPE == FLASH_TYPE_W25Q32BV_4K || FLASH_TYPE == FLASH_TYPE_W25Q32BV_32K || FLASH_TYPE == FLASH_TYPE_W25Q32BV_64K
+#elif FLASH_TYPE == FLASH_TYPE_W25Q32BV_64K
                 if (answer[0] == 0xEF && answer[1] == 0x40 && answer[2] == 0x16)
 #elif FLASH_TYPE == FLASH_TYPE_W25Q256FV_4K || FLASH_TYPE == FLASH_TYPE_W25Q256FV_64K
                 if (answer[0] == 0xEF && answer[1] == 0x40 && answer[2] == 0x19)
@@ -242,9 +242,10 @@ flash_status_t flash_init(void)
                 if (answer[0] == 0x01 && answer[1] == 0x20 && answer[2] == 0x18)
 #endif
                 {
+                    flash_block_num_all = FLASH_BLOCK_NUM_ALL;
                     snprintf(dfu_flash_descr, sizeof(dfu_flash_descr),
-                             "@SPI Flash ID: %02X %02X %02X/0x00000000/%i*064Kg",
-                             answer[0], answer[1], answer[2], sector_count
+                             "@SPI Flash (ID 0x%02X%02X%02X)/0x00000000/%i*064Kg",
+                             answer[0], answer[1], answer[2], flash_block_num_all
                             );
                     flash_initialized = TRUE;
                     ret = FLASH_SUCCESS;

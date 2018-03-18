@@ -109,6 +109,15 @@
 #define FLASH_INFO_MSG(...)
 #endif
 
+#if (FLASH_DEBUG_LEVEL >= 4)
+#define FLASH_INFO2_MSG(...)    do {                              \
+        printf(__VA_ARGS__);                                    \
+        fflush(stdout);                                         \
+    } while (0);
+#else
+#define FLASH_INFO2_MSG(...)
+#endif
+
 #if (FLASH_DEBUG_LEVEL >= 5)
 #define FLASH_DEBUG_MSG(...)    do {                             \
         printf("%s ", __FUNCTION__);                            \

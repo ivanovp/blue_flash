@@ -105,7 +105,7 @@ void watchdogTask(void const * arg);
 /**
  * Connect USB device to host.
  */
-inline void USB_enablePullup(void)
+void USB_enablePullup(void)
 {
 #if USE_LEAFLABS_MAPLE == 0
     HAL_GPIO_WritePin(USB_DISCONNECT_GPIO_Port, USB_DISCONNECT_Pin, GPIO_PIN_SET);
@@ -117,7 +117,7 @@ inline void USB_enablePullup(void)
 /**
  * Disconnect USB device to host.
  */
-inline void USB_disablePullup(void)
+void USB_disablePullup(void)
 {
 #if USE_LEAFLABS_MAPLE == 0
     HAL_GPIO_WritePin(USB_DISCONNECT_GPIO_Port, USB_DISCONNECT_Pin, GPIO_PIN_RESET);

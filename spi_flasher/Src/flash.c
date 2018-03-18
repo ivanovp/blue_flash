@@ -1,5 +1,5 @@
 /**
- * @file        flash_drv/stm32_spi_dma/flash.c
+ * @file        flash.c
  * @brief       NOR flash driver for STM32
  * @author      Copyright (C) Peter Ivanov, 2017
  *
@@ -23,6 +23,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#define FLASH_DEBUG_LEVEL      5
+
 #include "flash.h"
 #include "flash_debug.h"
 #include "uart.h"
@@ -33,7 +35,6 @@
 #define FLASH_4BYTE_ADDRESS	0
 #endif
 
-#define FLASH_ENABLE_DEBUG          1
 #ifndef FLASH_ENABLE_DMA
 #define FLASH_ENABLE_DMA            0   /**< DMA is not working on STM32F1xx */
 #endif
@@ -47,34 +48,11 @@
 #define SET_CS_HIGH()   do { \
 		HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_SET); \
 	} while (0);
-#if FLASH_4BYTE_ADDRESS
-#define WRITE_ADDRESS(buf, address) do { \
-        (buf)[0] = (address) >> 24; \
-        (buf)[1] = (address) >> 16; \
-        (buf)[2] = (address) >> 8; \
-        (buf)[3] = (address); \
-    } while (0);
-#else
-#define WRITE_ADDRESS(buf, address) do { \
-        (buf)[0] = (address) >> 16; \
-        (buf)[1] = (address) >> 8; \
-        (buf)[2] = (address); \
-    } while (0);
-#endif
 #define STATUS_REG_WIP              0x01    /**< Write in progress bit in status register */
 
 #define MS_TO_TICK(ms)              (ms * 1000 / osKernelSysTickFrequency)
 #define FLASH_TIMEOUT_TICK          MS_TO_TICK(FLASH_TIMEOUT_MS)
 #define FLASH_WRITE_TIMEOUT_TICK    MS_TO_TICK(FLASH_WRITE_TIMEOUT_MS)
-
-#if FLASH_ENABLE_DEBUG
-#define FLASH_ERROR_MSG(...)    do { \
-        UART_printf("%s:%i ERROR: ", __FUNCTION__, __LINE__); \
-        UART_printf(__VA_ARGS__); \
-    } while (0);
-#else
-#define FLASH_ERROR_MSG(...)
-#endif
 
 extern SPI_HandleTypeDef hspi1;
 /* Default value
@@ -105,23 +83,234 @@ static const uint8_t cmd_power_up[4]         = { 0xAB, 0, 0, 0 };
 static const uint8_t cmd_power_down[1]       = { 0xB9 };
 static const uint8_t cmd_read_id[1]          = { 0x9F };
 static const uint8_t cmd_read_status_reg[1]  = { 0x05 };
-#if FLASH_4BYTE_ADDRESS
 static const uint8_t cmd_enter_4byte_mode[1] = { 0xB7 };
 static uint8_t cmd_erase[5]                  = { 0xD8 };
 static uint8_t cmd_read_data[5]              = { 0x13 };
 static uint8_t cmd_page_program[5]           = { 0x02 };
-#else
-static uint8_t cmd_erase[4]                  = { 0xD8 };
-static uint8_t cmd_read_data[4]              = { 0x03 };
-static uint8_t cmd_page_program[4]           = { 0x02 };
-#endif
 static const uint8_t cmd_write_enable[1]     = { 0x06 };
+static uint8_t cmd_read_sfdp[5]              = { 0x5A, 0, 0, 0, 0 }; /* 24-bit address + 8 dummy bits */
 static uint8_t answer[3];
 #if FLASH_ENABLE_DMA
 static osSemaphoreId dma_finished;
 osSemaphoreDef(dma_finished);
 #endif
+#if FLASH_TYPE != FLASH_TYPE_SFDP
+static uint32_t flash_block_num_all = FLASH_BLOCK_NUM_ALL;
+static uint32_t flash_block_size_byte = FLASH_BLOCK_SIZE_BYTE;
+static uint32_t flash_density_bytes = FLASH_SIZE_BYTE_ALL;
+#if FLASH_4BYTE_ADDRESS
+static uint8_t flash_address_bytes = 4;
+#else
+static uint8_t flash_address_bytes = 3;
+#endif
+#else
 static uint32_t flash_block_num_all = 0;
+static uint32_t flash_block_size_byte = 65536;
+static uint32_t flash_density_bytes = 0;
+static uint8_t flash_address_bytes = 3;
+#endif
+
+#define SFDP_SIGNATURE      0x50444653   /* SFDP */
+#define SFDP_VERSION_MINOR  6
+#define SFDP_VERSION_MAJOR  1
+
+typedef struct __attribute__((packed))
+{
+    uint8_t                 id;
+    uint8_t                 version_minor;
+    uint8_t                 version_major;
+    uint8_t                 length_dw;     /* Length in double words */
+    uint8_t                 table_ptr[3];
+    uint8_t                 unused;
+} sfdp_parameter_header_t;
+
+typedef struct __attribute__((packed))
+{
+    uint32_t                signature; /* =SFDP_SIGNATURE */
+    uint8_t                 version_minor;
+    uint8_t                 version_major;
+    uint8_t                 nph;       /* Number of parameter header, 0 means one parameter header exists! */
+    uint8_t                 unused;    /* Unused field, =0xFF */
+    sfdp_parameter_header_t parameter_header[2];
+} sfdp_header_t;
+
+typedef struct __attribute__((packed))
+{
+    uint8_t sector_size;
+    uint8_t sector_erase_opcode;
+} sector_t;
+
+flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter_header)
+{
+    flash_status_t    ret = FLASH_ERROR_GENERAL;
+    uint32_t          dword;
+    HAL_StatusTypeDef stat;
+    uint8_t           addr_bytes;
+    sector_t          sector_types[4];
+    uint32_t          max_sector_size_byte = 0;
+    uint32_t          sector_size_byte = 0;
+    uint8_t           sector_erase_opcode = 0;
+    uint8_t           i;
+
+    FLASH_INFO2_MSG("ID: %i\r\n", a_parameter_header->id);
+    if (a_parameter_header->id == 0)
+    {
+        FLASH_INFO2_MSG("Version: %i.%i\r\n", a_parameter_header->version_major, a_parameter_header->version_minor);
+        FLASH_INFO2_MSG("Length: %i DW\r\n", a_parameter_header->length_dw);
+        FLASH_INFO2_MSG("Table pointer: 0x%02X%02X%02X\r\n",
+                    a_parameter_header->table_ptr[2],
+                a_parameter_header->table_ptr[1],
+                a_parameter_header->table_ptr[0]);
+        FLASH_INFO2_MSG("Unused: 0x%02X\r\n", a_parameter_header->unused);
+        /* Set address to read from parameter table */
+        cmd_read_sfdp[1] = a_parameter_header->table_ptr[2];
+        cmd_read_sfdp[2] = a_parameter_header->table_ptr[1];
+        cmd_read_sfdp[3] = a_parameter_header->table_ptr[0];
+        SET_CS_LOW();
+        if (HAL_SPI_Transmit(spi, cmd_read_sfdp, sizeof(cmd_read_sfdp), FLASH_TIMEOUT_TICK) == HAL_OK)
+        {
+            /* 1st DWORD */
+            stat = HAL_SPI_Receive(spi, &dword, sizeof(dword), FLASH_TIMEOUT_TICK);
+            if (stat == HAL_OK)
+            {
+                addr_bytes = (dword >> 17) & 0x3;
+                if (addr_bytes == 0)
+                {
+                    FLASH_INFO2_MSG("3-byte only addressing\r\n");
+                    flash_address_bytes = 3;
+                }
+                else if (addr_bytes == 1)
+                {
+                    FLASH_INFO2_MSG("3- or 4-byte addressing\r\n");
+                    flash_address_bytes = 4;
+                }
+                else if (addr_bytes == 2)
+                {
+                    FLASH_INFO2_MSG("4-byte only addressing\r\n");
+                    flash_address_bytes = 4;
+                }
+                else
+                {
+                    FLASH_ERROR_MSG("Erroneous addressing mode!\r\n");
+                }
+            }
+            /* 2nd DWORD, density */
+            stat = HAL_SPI_Receive(spi, &dword, sizeof(dword), FLASH_TIMEOUT_TICK);
+            if (stat == HAL_OK)
+            {
+                if (dword & (1u << 31))
+                {
+                    /* density is given in 2^N bits form */
+                    dword &= ~(1u << 31);
+                    flash_density_bytes = 1u << (dword - 3);
+                }
+                else
+                {
+                    flash_density_bytes = dword + 1;
+                }
+                FLASH_INFO2_MSG("Density: %i bytes\r\n", flash_density_bytes);
+            }
+            /* 3rd..7th DWORDS, fast read parameters, omitting */
+            for (i = 0; i < 5 && stat == HAL_OK; i++)
+            {
+                stat = HAL_SPI_Receive(spi, &dword, sizeof(dword), FLASH_TIMEOUT_TICK);
+            }
+            if (stat == HAL_OK)
+            {
+                /* 8th..9th DWORD, sector types */
+                stat = HAL_SPI_Receive(spi, &sector_types, sizeof(sector_types), FLASH_TIMEOUT_TICK);
+                for (i = 0; i < sizeof(sector_types) / sizeof(sector_types[0]); i++)
+                {
+                    if (sector_types[i].sector_size > 0)
+                    {
+                        sector_size_byte = (1u << sector_types[i].sector_size);
+                        FLASH_INFO2_MSG("Sector size: %i bytes, erase opcode: 0x%02X\r\n",
+                                        sector_size_byte,
+                                        sector_types[i].sector_erase_opcode);
+                        if (sector_size_byte > max_sector_size_byte)
+                        {
+                            max_sector_size_byte = sector_size_byte;
+                            sector_erase_opcode = sector_types[i].sector_erase_opcode;
+                            ret = FLASH_SUCCESS;
+                        }
+                    }
+                }
+                if (ret == FLASH_SUCCESS)
+                {
+                    flash_block_size_byte = max_sector_size_byte;
+                    flash_block_num_all = flash_density_bytes / flash_block_size_byte;
+                    cmd_erase[0] = sector_erase_opcode;
+                    FLASH_INFO2_MSG("Selected sector size: %i bytes, erase opcode: 0x%02X\r\n",
+                                    max_sector_size_byte,
+                                    sector_erase_opcode);
+                }
+                else
+                {
+                    FLASH_INFO2_MSG("No sector types found!\r\n");
+                }
+            }
+        }
+        SET_CS_HIGH();
+    }
+    else
+    {
+        FLASH_ERROR_MSG("Unkown parameter header ID: 0x%02X!\r\n", a_parameter_header->id);
+    }
+
+    return ret;
+}
+
+flash_status_t flash_read_sfdp(void)
+{
+    flash_status_t ret = FLASH_ERROR_GENERAL;
+    sfdp_header_t  sfdp_header;
+
+    FLASH_INFO2_MSG("\r\n");
+    SET_CS_LOW();
+    cmd_read_sfdp[1] = 0;
+    cmd_read_sfdp[2] = 0;
+    cmd_read_sfdp[3] = 0;
+    if (HAL_SPI_Transmit(spi, cmd_read_sfdp, sizeof(cmd_read_sfdp), FLASH_TIMEOUT_TICK) == HAL_OK)
+    {
+        if (HAL_SPI_Receive(spi, &sfdp_header, sizeof(sfdp_header), FLASH_TIMEOUT_TICK) == HAL_OK)
+        {
+            SET_CS_HIGH();
+            FLASH_INFO2_MSG("SFDP header\r\n");
+            FLASH_INFO2_MSG("Signature: 0x%08X\r\n", sfdp_header.signature);
+            if (sfdp_header.signature == SFDP_SIGNATURE)
+            {
+                FLASH_INFO2_MSG("Version: %i.%i\r\n", sfdp_header.version_major, sfdp_header.version_minor);
+                if (sfdp_header.version_major == 1)
+                {
+                    /* Number of parameters headers: 0 -> 1 parameter header. */
+                    FLASH_INFO2_MSG("Number of parameter headers: %i\r\n", sfdp_header.nph + 1);
+                    FLASH_INFO2_MSG("Unused: 0x%02X\r\n", sfdp_header.unused);
+                    FLASH_INFO2_MSG("1st parameter header\r\n");
+                    FLASH_INFO2_MSG("--------------------\r\n");
+                    ret = flash_read_parameter_header(&(sfdp_header.parameter_header[0]));
+                    if (sfdp_header.nph > 0)
+                    {
+                        FLASH_INFO2_MSG("2nd parameter header\r\n");
+                        FLASH_INFO2_MSG("--------------------\r\n");
+                        ret = flash_read_parameter_header(&(sfdp_header.parameter_header[1]));
+                    }
+                }
+                else
+                {
+                    FLASH_ERROR_MSG("Unknown SFDP header version!\r\n");
+                }
+            }
+            else
+            {
+                FLASH_ERROR_MSG("Wrong SFDP signature!\r\n");
+            }
+        }
+    }
+    SET_CS_HIGH();
+    FLASH_INFO2_MSG("\r\n\r\n");
+
+    return ret;
+}
 
 #if FLASH_ENABLE_DMA
 /**
@@ -144,6 +333,23 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
     osSemaphoreRelease(dma_finished);
 }
 #endif
+
+void flash_write_address(uint8_t * buf, uint32_t address)
+{
+    if (flash_address_bytes == 4)
+    {
+        buf[0] = address >> 24;
+        buf[1] = address >> 16;
+        buf[2] = address >> 8;
+        buf[3] = address;
+    }
+    else
+    {
+        buf[0] = address >> 16;
+        buf[1] = address >> 8;
+        buf[2] = address;
+    }
+}
 
 /**
  * @brief flash_write_enable Run write enable command. Necessary before
@@ -231,7 +437,10 @@ flash_status_t flash_init(void)
         {
             if (HAL_SPI_Receive(spi, answer, 3, FLASH_TIMEOUT_TICK) == HAL_OK)
             {
-#if FLASH_TYPE == FLASH_TYPE_M25P40
+#if FLASH_TYPE == FLASH_TYPE_SFDP
+                SET_CS_HIGH();
+                if (flash_read_sfdp() == FLASH_SUCCESS)
+#elif FLASH_TYPE == FLASH_TYPE_M25P40
                 if (answer[0] == 0x20 && answer[1] == 0x20 && answer[2] == 0x13)
 #elif FLASH_TYPE == FLASH_TYPE_W25Q16DV_64K
                 if (answer[0] == 0xEF && answer[1] == 0x40 && answer[2] == 0x15)
@@ -243,7 +452,9 @@ flash_status_t flash_init(void)
                 if (answer[0] == 0x01 && answer[1] == 0x20 && answer[2] == 0x18)
 #endif
                 {
+#if FLASH_TYPE != FLASH_TYPE_SFDP
                     flash_block_num_all = FLASH_BLOCK_NUM_ALL;
+#endif
                     snprintf(dfu_flash_descr, sizeof(dfu_flash_descr),
                              "@SPI Flash (ID 0x%02X%02X%02X)/0x00000000/%i*064Kg",
                              answer[0], answer[1], answer[2], flash_block_num_all
@@ -322,15 +533,15 @@ flash_status_t flash_read(flash_address_t a_address, void * const a_buf, size_t 
     if (flash_initialized)
     {
         ret = FLASH_ERROR_FLASH_READ;
-        if ((a_address + a_buf_size) <= FLASH_SIZE_BYTE_ALL
+        if ((a_address + a_buf_size) <= flash_density_bytes
 #if FLASH_BLOCK_RESERVED_NUM > 0
-                && a_address >= (FLASH_BLOCK_RESERVED_NUM * FLASH_BLOCK_SIZE_BYTE)
+                && a_address >= (FLASH_BLOCK_RESERVED_NUM * flash_block_size_byte)
 #endif
                 )
         {
             SET_CS_LOW();
-            WRITE_ADDRESS(&cmd_read_data[1], a_address);
-            if (HAL_SPI_Transmit(spi, cmd_read_data, sizeof(cmd_read_data), FLASH_TIMEOUT_TICK) == HAL_OK)
+            flash_write_address(&cmd_read_data[1], a_address);
+            if (HAL_SPI_Transmit(spi, cmd_read_data, flash_address_bytes + 1, FLASH_TIMEOUT_TICK) == HAL_OK)
             {
 #if FLASH_ENABLE_DMA
                 if (HAL_SPI_Receive_DMA(spi, a_buf, a_buf_size) == HAL_OK)
@@ -378,9 +589,9 @@ flash_status_t flash_write(flash_address_t a_address, const void * const a_buf, 
     if (flash_initialized)
     {
         ret = FLASH_ERROR_FLASH_WRITE;
-        if ((a_address + a_buf_size) <= FLASH_SIZE_BYTE_ALL
+        if ((a_address + a_buf_size) <= flash_density_bytes
 #if FLASH_BLOCK_RESERVED_NUM > 0
-                && a_address >= (FLASH_BLOCK_RESERVED_NUM * FLASH_BLOCK_SIZE_BYTE)
+                && a_address >= (FLASH_BLOCK_RESERVED_NUM * flash_block_size_byte)
 #endif
                 )
         {
@@ -388,8 +599,8 @@ flash_status_t flash_write(flash_address_t a_address, const void * const a_buf, 
             if (ret == FLASH_SUCCESS)
             {
                 SET_CS_LOW();
-                WRITE_ADDRESS(&cmd_page_program[1], a_address);
-                if (HAL_SPI_Transmit(spi, cmd_page_program, sizeof(cmd_page_program), FLASH_TIMEOUT_TICK) == HAL_OK)
+                flash_write_address(&cmd_page_program[1], a_address);
+                if (HAL_SPI_Transmit(spi, cmd_page_program, flash_address_bytes + 1, FLASH_TIMEOUT_TICK) == HAL_OK)
                 {
 #if FLASH_ENABLE_DMA
                     if (HAL_SPI_Transmit_DMA(spi, a_buf, a_buf_size) == HAL_OK)
@@ -441,9 +652,9 @@ flash_status_t flash_erase(flash_address_t a_address)
     if (flash_initialized)
     {
         ret = FLASH_ERROR_FLASH_ERASE;
-        if ((a_address + FLASH_BLOCK_SIZE_BYTE) <= FLASH_SIZE_BYTE_ALL
+        if ((a_address + flash_block_size_byte) <= flash_density_bytes
 #if FLASH_BLOCK_RESERVED_NUM > 0
-                && a_address >= (FLASH_BLOCK_RESERVED_NUM * FLASH_BLOCK_SIZE_BYTE)
+                && a_address >= (FLASH_BLOCK_RESERVED_NUM * flash_block_size_byte)
 #endif
             )
         {
@@ -451,8 +662,8 @@ flash_status_t flash_erase(flash_address_t a_address)
             if (ret == FLASH_SUCCESS)
             {
                 SET_CS_LOW();
-                WRITE_ADDRESS(&cmd_erase[1], a_address);
-                if (HAL_SPI_Transmit(spi, cmd_erase, sizeof(cmd_erase), FLASH_TIMEOUT_TICK) == HAL_OK)
+                flash_write_address(&cmd_erase[1], a_address);
+                if (HAL_SPI_Transmit(spi, cmd_erase, flash_address_bytes + 1, FLASH_TIMEOUT_TICK) == HAL_OK)
                 {
                     ret = FLASH_SUCCESS;
                 }

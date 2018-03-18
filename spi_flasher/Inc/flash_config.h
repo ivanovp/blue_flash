@@ -33,7 +33,7 @@
 #define FLASH_TYPE_W25Q256FV_64K    7   /**< 64 KiB sector mode */
 
 /** Type of flash memory */
-#define FLASH_TYPE                  FLASH_TYPE_W25Q16DV_64K
+#define FLASH_TYPE                  FLASH_TYPE_SFDP
 
 #if FLASH_TYPE == FLASH_TYPE_M25P40
 /* Geometry of ST M25P40 */

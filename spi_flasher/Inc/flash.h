@@ -45,54 +45,6 @@ typedef enum
 
 typedef uint32_t flash_address_t;
 
-#if (FLASH_BLOCK_NUM_ALL < 255)
-typedef uint8_t flash_block_address_t;
-#define FLASH_BLOCK_ADDRESS_INVALID   (UINT8_MAX - 1u)
-#define FLASH_BLOCK_ADDRESS_ERASED    (UINT8_MAX)
-#elif (FLASH_BLOCK_NUM_ALL < 65535)
-typedef uint16_t flash_block_address_t;
-#define FLASH_BLOCK_ADDRESS_INVALID   (UINT16_MAX - 1u)
-#define FLASH_BLOCK_ADDRESS_ERASED    (UINT16_MAX)
-#elif (FLASH_BLOCK_NUM_ALL < 4294967295l)
-typedef uint32_t flash_block_address_t;
-#define FLASH_BLOCK_ADDRESS_INVALID   (UINT32_MAX - 1u)
-#define FLASH_BLOCK_ADDRESS_ERASED    (UINT32_MAX)
-#else
-#error FLASH_BLOCK_NUM_ALL is too big!
-#endif
-
-#if (FLASH_PAGE_PER_BLOCK < 255)
-typedef uint8_t flash_page_address_t;
-#define FLASH_PAGE_ADDRESS_INVALID   (UINT8_MAX - 1u)
-#define FLASH_PAGE_ADDRESS_ERASED    (UINT8_MAX)
-#elif (FLASH_PAGE_PER_BLOCK < 65535)
-typedef uint16_t flash_page_address_t;
-#define FLASH_PAGE_ADDRESS_INVALID   (UINT16_MAX - 1u)
-#define FLASH_PAGE_ADDRESS_ERASED    (UINT16_MAX)
-#elif (FLASH_PAGE_PER_BLOCK < 4294967295l)
-typedef uint32_t flash_page_address_t;
-#define FLASH_PAGE_ADDRESS_INVALID   (UINT32_MAX - 1u)
-#define FLASH_PAGE_ADDRESS_ERASED    (UINT32_MAX)
-#else
-#error FLASH_PAGE_PER_BLOCK is too big!
-#endif
-
-#if (FLASH_PAGE_SIZE_BYTE < 255 && FLASH_LOGICAL_PAGE_SIZE_BYTE < 255)
-typedef uint8_t flash_page_offset_t;
-#define FLASH_PAGE_OFFSET_INVALID   (UINT8_MAX - 1u)
-#define FLASH_PAGE_OFFSET_ERASED    (UINT8_MAX)
-#elif (FLASH_PAGE_SIZE_BYTE < 65535 && FLASH_LOGICAL_PAGE_SIZE_BYTE < 65535)
-typedef uint16_t flash_page_offset_t;
-#define FLASH_PAGE_OFFSET_INVALID   (UINT16_MAX - 1u)
-#define FLASH_PAGE_OFFSET_ERASED    (UINT16_MAX)
-#elif (FLASH_PAGE_SIZE_BYTE < 4294967295l && FLASH_LOGICAL_PAGE_SIZE_BYTE < 4294967295l)
-typedef uint32_t flash_page_offset_t;
-#define FLASH_PAGE_OFFSET_INVALID   (UINT32_MAX - 1u)
-#define FLASH_PAGE_OFFSET_ERASED    (UINT32_MAX)
-#else
-#error FLASH_PAGE_SIZE_BYTE or FLASH_LOGICAL_PAGE_SIZE_BYTE is too big!
-#endif
-
 /** Number of blocks used by the file system */
 #define FLASH_BLOCK_NUM_FS     (FLASH_BLOCK_NUM_ALL - FLASH_BLOCK_RESERVED_NUM)
 /** Size of a block in bytes */

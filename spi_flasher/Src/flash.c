@@ -113,6 +113,7 @@ static uint8_t flash_address_bytes = 3;
 #define SFDP_SIGNATURE      0x50444653   /* SFDP */
 #define SFDP_VERSION_MINOR  6
 #define SFDP_VERSION_MAJOR  1
+#define SFDP_MAX_NPH        6
 
 typedef struct __attribute__((packed))
 {
@@ -131,7 +132,7 @@ typedef struct __attribute__((packed))
     uint8_t                 version_major;
     uint8_t                 nph;       /* Number of parameter header, 0 means one parameter header exists! */
     uint8_t                 unused;    /* Unused field, =0xFF */
-    sfdp_parameter_header_t parameter_header[2];
+    sfdp_parameter_header_t parameter_header[SFDP_MAX_NPH];
 } sfdp_header_t;
 
 typedef struct __attribute__((packed))
@@ -170,7 +171,7 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
         if (HAL_SPI_Transmit(spi, cmd_read_sfdp, sizeof(cmd_read_sfdp), FLASH_TIMEOUT_TICK) == HAL_OK)
         {
             /* 1st DWORD */
-            stat = HAL_SPI_Receive(spi, &dword, sizeof(dword), FLASH_TIMEOUT_TICK);
+            stat = HAL_SPI_Receive(spi, (uint8_t*)&dword, sizeof(dword), FLASH_TIMEOUT_TICK);
             if (stat == HAL_OK)
             {
                 addr_bytes = (dword >> 17) & 0x3;
@@ -182,7 +183,7 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                 else if (addr_bytes == 1)
                 {
                     FLASH_INFO2_MSG("3- or 4-byte addressing\r\n");
-                    flash_address_bytes = 4;
+                    flash_address_bytes = 3;
                 }
                 else if (addr_bytes == 2)
                 {
@@ -195,7 +196,7 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                 }
             }
             /* 2nd DWORD, density */
-            stat = HAL_SPI_Receive(spi, &dword, sizeof(dword), FLASH_TIMEOUT_TICK);
+            stat = HAL_SPI_Receive(spi, (uint8_t*)&dword, sizeof(dword), FLASH_TIMEOUT_TICK);
             if (stat == HAL_OK)
             {
                 if (dword & (1u << 31))
@@ -206,19 +207,19 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                 }
                 else
                 {
-                    flash_density_bytes = dword + 1;
+                    flash_density_bytes = (dword + 1) >> 3;
                 }
                 FLASH_INFO2_MSG("Density: %i bytes\r\n", flash_density_bytes);
             }
             /* 3rd..7th DWORDS, fast read parameters, omitting */
             for (i = 0; i < 5 && stat == HAL_OK; i++)
             {
-                stat = HAL_SPI_Receive(spi, &dword, sizeof(dword), FLASH_TIMEOUT_TICK);
+                stat = HAL_SPI_Receive(spi, (uint8_t*)&dword, sizeof(dword), FLASH_TIMEOUT_TICK);
             }
             if (stat == HAL_OK)
             {
                 /* 8th..9th DWORD, sector types */
-                stat = HAL_SPI_Receive(spi, &sector_types, sizeof(sector_types), FLASH_TIMEOUT_TICK);
+                stat = HAL_SPI_Receive(spi, (uint8_t*)&sector_types, sizeof(sector_types), FLASH_TIMEOUT_TICK);
                 for (i = 0; i < sizeof(sector_types) / sizeof(sector_types[0]); i++)
                 {
                     if (sector_types[i].sector_size > 0)
@@ -227,7 +228,8 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                         FLASH_INFO2_MSG("Sector size: %i bytes, erase opcode: 0x%02X\r\n",
                                         sector_size_byte,
                                         sector_types[i].sector_erase_opcode);
-                        if (sector_size_byte > max_sector_size_byte)
+                        if ((sector_size_byte > max_sector_size_byte)
+                                && (sector_size_byte <= 65536))
                         {
                             max_sector_size_byte = sector_size_byte;
                             sector_erase_opcode = sector_types[i].sector_erase_opcode;
@@ -255,7 +257,9 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
     else
     {
         FLASH_ERROR_MSG("Unkown parameter header ID: 0x%02X!\r\n", a_parameter_header->id);
+        ret = FLASH_SUCCESS;
     }
+    FLASH_INFO2_MSG("\r\n");
 
     return ret;
 }
@@ -264,6 +268,7 @@ flash_status_t flash_read_sfdp(void)
 {
     flash_status_t ret = FLASH_ERROR_GENERAL;
     sfdp_header_t  sfdp_header;
+    uint8_t        i;
 
     FLASH_INFO2_MSG("\r\n");
     SET_CS_LOW();
@@ -285,14 +290,11 @@ flash_status_t flash_read_sfdp(void)
                     /* Number of parameters headers: 0 -> 1 parameter header. */
                     FLASH_INFO2_MSG("Number of parameter headers: %i\r\n", sfdp_header.nph + 1);
                     FLASH_INFO2_MSG("Unused: 0x%02X\r\n", sfdp_header.unused);
-                    FLASH_INFO2_MSG("1st parameter header\r\n");
-                    FLASH_INFO2_MSG("--------------------\r\n");
-                    ret = flash_read_parameter_header(&(sfdp_header.parameter_header[0]));
-                    if (sfdp_header.nph > 0)
+                    for (i = 0; i <= sfdp_header.nph && i < SFDP_MAX_NPH; i++)
                     {
-                        FLASH_INFO2_MSG("2nd parameter header\r\n");
+                        FLASH_INFO2_MSG("#%i parameter header\r\n", i);
                         FLASH_INFO2_MSG("--------------------\r\n");
-                        ret = flash_read_parameter_header(&(sfdp_header.parameter_header[1]));
+                        ret = flash_read_parameter_header(&(sfdp_header.parameter_header[i]));
                     }
                 }
                 else
@@ -456,8 +458,9 @@ flash_status_t flash_init(void)
                     flash_block_num_all = FLASH_BLOCK_NUM_ALL;
 #endif
                     snprintf(dfu_flash_descr, sizeof(dfu_flash_descr),
-                             "@SPI Flash (ID 0x%02X%02X%02X)/0x00000000/%i*064Kg",
-                             answer[0], answer[1], answer[2], flash_block_num_all
+                             "@SPI Flash (ID 0x%02X%02X%02X)/0x00000000/%i*%03iKg",
+                             answer[0], answer[1], answer[2], flash_block_num_all,
+                            (flash_block_size_byte >> 10)
                             );
                     flash_initialized = TRUE;
                     ret = FLASH_SUCCESS;
@@ -472,12 +475,10 @@ flash_status_t flash_init(void)
         }
         SET_CS_HIGH();
 
-#if FLASH_4BYTE_ADDRESS
-        if (ret == FLASH_SUCCESS)
+        if (ret == FLASH_SUCCESS && flash_address_bytes == 4)
         {
-            //osDelay(1);
             SET_CS_LOW();
-            if (HAL_SPI_Transmit(spi, cmd_enter_4byte_mode, sizeof(cmd_enter_4byte_mode), FLASH_TIMEOUT) == HAL_OK)
+            if (HAL_SPI_Transmit(spi, cmd_enter_4byte_mode, sizeof(cmd_enter_4byte_mode), FLASH_TIMEOUT_TICK) == HAL_OK)
             {
                 ret = FLASH_SUCCESS;
             }
@@ -487,7 +488,6 @@ flash_status_t flash_init(void)
             }
             SET_CS_HIGH();
         }
-#endif
     }
 
     return ret;

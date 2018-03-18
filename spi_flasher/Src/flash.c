@@ -35,7 +35,7 @@
 
 #define FLASH_ENABLE_DEBUG          1
 #ifndef FLASH_ENABLE_DMA
-#define FLASH_ENABLE_DMA            0
+#define FLASH_ENABLE_DMA            0   /**< DMA is not working on STM32F1xx */
 #endif
 #define FLASH_TIMEOUT_MS            1000
 #define FLASH_WRITE_TIMEOUT_MS      5000

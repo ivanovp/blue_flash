@@ -465,7 +465,7 @@ void StartDefaultTask(void const * argument)
   UART_printf("Connect USB device (enable 1.5k pull-up resistor on D+)\r\n");
   USB_enablePullup();
   dfu_flash_init();
-  dfu_release_flash_interface();
+  dfu_flash_deinit();
   /* Infinite loop */
   for(;;)
   {

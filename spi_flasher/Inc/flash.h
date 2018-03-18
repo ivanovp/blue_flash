@@ -43,6 +43,8 @@ typedef enum
     FLASH_ERROR_FLASH_GENERAL = 17,
 } flash_status_t;
 
+typedef uint32_t flash_address_t;
+
 #if (FLASH_BLOCK_NUM_ALL < 255)
 typedef uint8_t flash_block_address_t;
 #define FLASH_BLOCK_ADDRESS_INVALID   (UINT8_MAX - 1u)
@@ -104,7 +106,7 @@ typedef uint32_t flash_page_offset_t;
 /** Number of flash pages used by the file system */
 #define FLASH_PAGE_NUM_FS      (FLASH_BLOCK_NUM_FS * FLASH_PAGE_PER_BLOCK)
 
-#define DFU_FLASH_DESCR_SIZE    64
+#define DFU_FLASH_DESCR_SIZE    128
 
 extern uint8_t dfu_flash_descr[DFU_FLASH_DESCR_SIZE];
 
@@ -125,35 +127,31 @@ flash_status_t flash_delete(void);
 /**
  * @brief flash_read Read from flash memory.
  *
- * @param[in] a_block_address Address of block.
- * @param[in] a_page_address  Address of the page in block.
- * @param[in] a_page_offset   Offset in page.
+ * @param[in] a_address       Address in flash.
  * @param[out] a_buf          Buffer to fill.
  * @param[in] a_buf_size      Size of buffer.
  * @return FLASH_SUCCESS if read successfully finished.
  */
-flash_status_t flash_read(flash_block_address_t a_block_address, flash_page_address_t a_page_address, flash_page_offset_t a_page_offset, void * const a_buf, size_t a_buf_size);
+flash_status_t flash_read(flash_address_t a_address, void * const a_buf, size_t a_buf_size);
 
 /**
  * @brief flash_write Write to flash memory.
  *
- * @param[in] a_block_address Address of block.
- * @param[in] a_page_address  Address of the page in block.
- * @param[in] a_page_offset   Offset in page.
+ * @param[in] a_address       Address in flash.
  * @param[in] a_buf           Buffer to write.
  * @param[in] a_buf_size      Size of buffer.
  * @return FLASH_SUCCESS if write successfully finished.
  */
-flash_status_t flash_write(flash_block_address_t a_block_address, flash_page_address_t a_page_address, flash_page_address_t a_page_offset, const void * const a_buf, size_t a_buf_size);
+flash_status_t flash_write(flash_address_t a_address, const void * const a_buf, size_t a_buf_size);
 
 /**
  * @brief flash_erase Erase a block.
  *
- * @param[in] a_block_address Block to erase.
+ * @param[in] a_address       Address in flash.
  *
  * @return FLASH_SUCCESS if block was erased successfully.
  */
-flash_status_t flash_erase(flash_block_address_t a_block_address);
+flash_status_t flash_erase(flash_address_t a_address);
 
 /**
  * @brief flash_print_stat Called by the terminal to print information

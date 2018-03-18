@@ -236,7 +236,6 @@ uint16_t MEM_If_Erase_FS(uint32_t Add)
 {
   /* USER CODE BEGIN 2 */
 	uint16_t ret = USBD_FAIL;
-    flash_block_address_t ba;
     flash_status_t fl_ret;
 
     ret = dfu_flash_init();
@@ -245,11 +244,10 @@ uint16_t MEM_If_Erase_FS(uint32_t Add)
         osSemaphoreRelease(creset_sem);
         SET_CRESET_ON();
 
-        ba = Add / FLASH_BLOCK_SIZE_BYTE;
-        fl_ret = flash_erase(ba);
+        fl_ret = flash_erase(Add);
         if (fl_ret == FLASH_SUCCESS)
         {
-            DFU_DEBUG_MSG("Erased block %i\r\n", ba);
+            DFU_DEBUG_MSG("Erased 0x%08Xi\r\n", addr);
             ret = USBD_OK;
         }
         else
@@ -273,9 +271,6 @@ uint16_t MEM_If_Write_FS(uint8_t *src, uint8_t *dest, uint32_t Len)
 {
   /* USER CODE BEGIN 3 */
 	uint16_t ret = USBD_FAIL;
-    flash_block_address_t ba;
-    flash_page_address_t  pa;
-    flash_page_offset_t   ofs;
 	uintptr_t addr = (uintptr_t) dest;
     flash_status_t fl_ret;
 
@@ -285,13 +280,10 @@ uint16_t MEM_If_Write_FS(uint8_t *src, uint8_t *dest, uint32_t Len)
         osSemaphoreRelease(creset_sem);
         SET_CRESET_ON();
 
-        ba = addr / FLASH_BLOCK_SIZE_BYTE;
-        pa = (addr % FLASH_BLOCK_SIZE_BYTE) / FLASH_PAGE_SIZE_BYTE;
-        ofs = (addr % FLASH_BLOCK_SIZE_BYTE) % FLASH_PAGE_SIZE_BYTE;
-        fl_ret = flash_write(ba, pa, ofs, src, Len);
+        fl_ret = flash_write(addr, src, Len);
         if (fl_ret == FLASH_SUCCESS)
         {
-            DFU_DEBUG_MSG("Written block %i, page %i\r\n", ba, pa);
+            DFU_DEBUG_MSG("W0x%08X\r\n", addr);
             ret = USBD_OK;
         }
         else
@@ -316,11 +308,8 @@ uint8_t *MEM_If_Read_FS(uint8_t *src, uint8_t *dest, uint32_t Len)
   /* Return a valid address to avoid HardFault */
   /* USER CODE BEGIN 4 */
 	uint16_t             ret;
-    flash_block_address_t ba;
-    flash_page_address_t  pa;
-    flash_page_offset_t   ofs;
     uintptr_t            addr = (uintptr_t) src;
-    flash_status_t        fl_ret;
+    flash_status_t       fl_ret;
 
     ret = dfu_flash_init();
     if (ret == USBD_OK)
@@ -328,13 +317,10 @@ uint8_t *MEM_If_Read_FS(uint8_t *src, uint8_t *dest, uint32_t Len)
         osSemaphoreRelease(creset_sem);
         SET_CRESET_ON();
 
-        ba = addr / FLASH_BLOCK_SIZE_BYTE;
-        pa = (addr % FLASH_BLOCK_SIZE_BYTE) / FLASH_PAGE_SIZE_BYTE;
-        ofs = (addr % FLASH_BLOCK_SIZE_BYTE) % FLASH_PAGE_SIZE_BYTE;
-        fl_ret = flash_read(ba, pa, ofs, page_buf, Len);
+        fl_ret = flash_read(addr, page_buf, Len);
         if (fl_ret == FLASH_SUCCESS)
         {
-            DFU_DEBUG_MSG("Read block %i, page %i\r\n", ba, pa);
+            DFU_DEBUG_MSG("R0x%08X\r\n", addr);
         }
         else
         {

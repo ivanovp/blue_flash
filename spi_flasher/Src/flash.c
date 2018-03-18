@@ -48,17 +48,17 @@
 		HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_SET); \
 	} while (0);
 #if FLASH_4BYTE_ADDRESS
-#define WRITE_ADDRESS(buf, block_address, page_address, page_offset) do { \
-        (buf)[0] = (block_address) >> 8; \
-		(buf)[1] = (block_address); \
-		(buf)[2] = (page_address); \
-		(buf)[3] = (page_offset); \
-	} while (0);
+#define WRITE_ADDRESS(buf, address) do { \
+        (buf)[0] = (address) >> 24; \
+        (buf)[1] = (address) >> 16; \
+        (buf)[2] = (address) >> 8; \
+        (buf)[3] = (address); \
+    } while (0);
 #else
-#define WRITE_ADDRESS(buf, block_address, page_address, page_offset) do { \
-        (buf)[0] = (block_address); \
-        (buf)[1] = (page_address); \
-        (buf)[2] = (page_offset); \
+#define WRITE_ADDRESS(buf, address) do { \
+        (buf)[0] = (address) >> 16; \
+        (buf)[1] = (address) >> 8; \
+        (buf)[2] = (address); \
     } while (0);
 #endif
 #define STATUS_REG_WIP              0x01    /**< Write in progress bit in status register */
@@ -310,31 +310,26 @@ flash_status_t flash_delete(void)
 /**
  * @brief flash_read Read from flash memory.
  *
- * @param[in] a_block_address Address of block.
- * @param[in] a_page_address  Address of the page in block.
- * @param[in] a_page_offset   Offset in page.
+ * @param[in] a_address       Address in flash.
  * @param[out] a_buf          Buffer to fill.
  * @param[in] a_buf_size      Size of buffer.
  * @return FLASH_SUCCESS if read successfully finished.
  */
-flash_status_t flash_read(flash_block_address_t a_block_address, flash_page_address_t a_page_address, flash_page_offset_t a_page_offset, void * const a_buf, size_t a_buf_size)
+flash_status_t flash_read(flash_address_t a_address, void * const a_buf, size_t a_buf_size)
 {
     flash_status_t ret = FLASH_ERROR_FLASH_INIT;
-    long int offset = a_block_address * FLASH_BLOCK_SIZE_BYTE
-        + a_page_address * FLASH_PAGE_SIZE_BYTE
-        + a_page_offset;
 
     if (flash_initialized)
     {
         ret = FLASH_ERROR_FLASH_READ;
-        if ((offset + a_buf_size) <= FLASH_SIZE_BYTE_ALL
+        if ((a_address + a_buf_size) <= FLASH_SIZE_BYTE_ALL
 #if FLASH_BLOCK_RESERVED_NUM > 0
-                && offset >= (FLASH_BLOCK_RESERVED_NUM * FLASH_BLOCK_SIZE_BYTE)
+                && a_address >= (FLASH_BLOCK_RESERVED_NUM * FLASH_BLOCK_SIZE_BYTE)
 #endif
                 )
         {
             SET_CS_LOW();
-            WRITE_ADDRESS(&cmd_read_data[1], a_block_address, a_page_address, a_page_offset);
+            WRITE_ADDRESS(&cmd_read_data[1], a_address);
             if (HAL_SPI_Transmit(spi, cmd_read_data, sizeof(cmd_read_data), FLASH_TIMEOUT_TICK) == HAL_OK)
             {
 #if FLASH_ENABLE_DMA
@@ -356,8 +351,8 @@ flash_status_t flash_read(flash_block_address_t a_block_address, flash_page_addr
         }
         else
         {
-            FLASH_ERROR_MSG("Trying to read from invalid flash address! BA%i/PA%i/OFS%i\r\n",
-                            a_block_address, a_page_address, a_page_offset);
+            FLASH_ERROR_MSG("Trying to read from invalid flash address! 0x%X\r\n",
+                            a_address);
         }
     }
     else
@@ -371,26 +366,21 @@ flash_status_t flash_read(flash_block_address_t a_block_address, flash_page_addr
 /**
  * @brief flash_write Write to flash memory.
  *
- * @param[in] a_block_address Address of block.
- * @param[in] a_page_address  Address of the page in block.
- * @param[in] a_page_offset   Offset in page.
+ * @param[in] a_address       Address in flash.
  * @param[in] a_buf           Buffer to write.
  * @param[in] a_buf_size      Size of buffer.
  * @return FLASH_SUCCESS if write successfully finished.
  */
-flash_status_t flash_write(flash_block_address_t a_block_address, flash_page_address_t a_page_address, flash_page_address_t a_page_offset, const void * const a_buf, size_t a_buf_size)
+flash_status_t flash_write(flash_address_t a_address, const void * const a_buf, size_t a_buf_size)
 {
     flash_status_t ret = FLASH_ERROR_FLASH_INIT;
-    long int offset = a_block_address * FLASH_BLOCK_SIZE_BYTE
-        + a_page_address * FLASH_PAGE_SIZE_BYTE
-        + a_page_offset;
     
     if (flash_initialized)
     {
         ret = FLASH_ERROR_FLASH_WRITE;
-        if ((offset + a_buf_size) <= FLASH_SIZE_BYTE_ALL
+        if ((a_address + a_buf_size) <= FLASH_SIZE_BYTE_ALL
 #if FLASH_BLOCK_RESERVED_NUM > 0
-                && offset >= (FLASH_BLOCK_RESERVED_NUM * FLASH_BLOCK_SIZE_BYTE)
+                && a_address >= (FLASH_BLOCK_RESERVED_NUM * FLASH_BLOCK_SIZE_BYTE)
 #endif
                 )
         {
@@ -398,7 +388,7 @@ flash_status_t flash_write(flash_block_address_t a_block_address, flash_page_add
             if (ret == FLASH_SUCCESS)
             {
                 SET_CS_LOW();
-                WRITE_ADDRESS(&cmd_page_program[1], a_block_address, a_page_address, a_page_offset);
+                WRITE_ADDRESS(&cmd_page_program[1], a_address);
                 if (HAL_SPI_Transmit(spi, cmd_page_program, sizeof(cmd_page_program), FLASH_TIMEOUT_TICK) == HAL_OK)
                 {
 #if FLASH_ENABLE_DMA
@@ -425,8 +415,8 @@ flash_status_t flash_write(flash_block_address_t a_block_address, flash_page_add
         }
         else
         {
-            FLASH_ERROR_MSG("Trying to write to invalid flash address! BA%i/PA%i/OFS%i\r\n",
-                            a_block_address, a_page_address, a_page_offset);
+            FLASH_ERROR_MSG("Trying to write to invalid flash address! 0x%X\r\n",
+                            a_address);
         }
     }
     else
@@ -440,21 +430,20 @@ flash_status_t flash_write(flash_block_address_t a_block_address, flash_page_add
 /**
  * @brief flash_erase Erase a block.
  *
- * @param[in] a_block_address Block to erase.
+ * @param[in] a_address       Address in flash.
  *
  * @return FLASH_SUCCESS if block was erased successfully.
  */
-flash_status_t flash_erase(flash_block_address_t a_block_address)
+flash_status_t flash_erase(flash_address_t a_address)
 {
     flash_status_t ret = FLASH_ERROR_FLASH_INIT;
-    long int offset = a_block_address * FLASH_BLOCK_SIZE_BYTE;
     
     if (flash_initialized)
     {
         ret = FLASH_ERROR_FLASH_ERASE;
-        if ((offset + FLASH_BLOCK_SIZE_BYTE) <= FLASH_SIZE_BYTE_ALL
+        if ((a_address + FLASH_BLOCK_SIZE_BYTE) <= FLASH_SIZE_BYTE_ALL
 #if FLASH_BLOCK_RESERVED_NUM > 0
-                && offset >= (FLASH_BLOCK_RESERVED_NUM * FLASH_BLOCK_SIZE_BYTE)
+                && a_address >= (FLASH_BLOCK_RESERVED_NUM * FLASH_BLOCK_SIZE_BYTE)
 #endif
             )
         {
@@ -462,7 +451,7 @@ flash_status_t flash_erase(flash_block_address_t a_block_address)
             if (ret == FLASH_SUCCESS)
             {
                 SET_CS_LOW();
-                WRITE_ADDRESS(&cmd_erase[1], a_block_address, 0, 0);
+                WRITE_ADDRESS(&cmd_erase[1], a_address);
                 if (HAL_SPI_Transmit(spi, cmd_erase, sizeof(cmd_erase), FLASH_TIMEOUT_TICK) == HAL_OK)
                 {
                     ret = FLASH_SUCCESS;
@@ -476,8 +465,8 @@ flash_status_t flash_erase(flash_block_address_t a_block_address)
         }
         else
         {
-            FLASH_ERROR_MSG("Trying to erase invalid flash address! BA%i\r\n",
-                            a_block_address);
+            FLASH_ERROR_MSG("Trying to erase invalid flash address! 0x%X\r\n",
+                            a_address);
         }
     }
     else

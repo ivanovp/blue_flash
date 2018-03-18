@@ -284,6 +284,7 @@ flash_status_t flash_read_sfdp(void)
         {
             SET_CS_HIGH();
             FLASH_INFO2_MSG("SFDP header\r\n");
+            FLASH_INFO2_MSG("===========\r\n");
             FLASH_INFO2_MSG("Signature: 0x%08X\r\n", sfdp_header.signature);
             if (sfdp_header.signature == SFDP_SIGNATURE)
             {
@@ -448,25 +449,30 @@ flash_status_t flash_init(void)
                 ret = flash_read_sfdp();
                 if (ret != FLASH_SUCCESS)
                 {
+                    FLASH_INFO2_MSG("Trying to calculate flash geometry\r\n");
                     /* SFDP was unsuccessful, trying to calculate memory capacity */
                     /* from ID's 3rd byte */
                     /* BCD to binary conversion */
                     n = (answer[2] >> 4) * 10;
                     n += (answer[2] & 0xF);
                     flash_density_bytes = 64u << n;
+                    FLASH_INFO2_MSG("Density: %i bytes\r\n", flash_density_bytes);
                     if (flash_density_bytes > 16 *1024 *1024)
                     {
                         /* Over 128 MBit, so four address bytes needed */
                         flash_address_bytes = 4;
+                        FLASH_INFO2_MSG("4-byte adressing\r\n");
                     }
                     else
                     {
                         flash_address_bytes = 3;
+                        FLASH_INFO2_MSG("3-byte adressing\r\n");
                     }
                     flash_block_size_byte = FLASH_DEFAULT_BLOCK_SIZE;
                     flash_block_num_all = flash_density_bytes / flash_block_size_byte;
                     cmd_erase[0] = FLASH_DEFAULT_ERASE_COMMAND;
                     ret = FLASH_SUCCESS;
+                    FLASH_INFO2_MSG("\r\n");
                 }
                 if (ret == FLASH_SUCCESS)
 #elif FLASH_TYPE == FLASH_TYPE_M25P40

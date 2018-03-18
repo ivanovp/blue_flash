@@ -42,6 +42,9 @@
 #define FLASH_WRITE_TIMEOUT_MS      5000
 #define FLASH_DMA_TIMEOUT_MS        5
 
+#define FLASH_DEFAULT_ERASE_COMMAND 0xD8
+#define FLASH_DEFAULT_BLOCK_SIZE    65536
+
 #define SET_CS_LOW()    do { \
 		HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_RESET); \
 	} while (0);
@@ -84,7 +87,7 @@ static const uint8_t cmd_power_down[1]       = { 0xB9 };
 static const uint8_t cmd_read_id[1]          = { 0x9F };
 static const uint8_t cmd_read_status_reg[1]  = { 0x05 };
 static const uint8_t cmd_enter_4byte_mode[1] = { 0xB7 };
-static uint8_t cmd_erase[5]                  = { 0xD8 };
+static uint8_t cmd_erase[5]                  = { FLASH_DEFAULT_ERASE_COMMAND };
 static uint8_t cmd_read_data[5]              = { 0x13 };
 static uint8_t cmd_page_program[5]           = { 0x02 };
 static const uint8_t cmd_write_enable[1]     = { 0x06 };
@@ -94,7 +97,7 @@ static uint8_t answer[3];
 static osSemaphoreId dma_finished;
 osSemaphoreDef(dma_finished);
 #endif
-#if FLASH_TYPE != FLASH_TYPE_SFDP
+#if FLASH_TYPE != FLASH_TYPE_AUTO_DETECT
 static uint32_t flash_block_num_all = FLASH_BLOCK_NUM_ALL;
 static uint32_t flash_block_size_byte = FLASH_BLOCK_SIZE_BYTE;
 static uint32_t flash_density_bytes = FLASH_SIZE_BYTE_ALL;
@@ -105,7 +108,7 @@ static uint8_t flash_address_bytes = 3;
 #endif
 #else
 static uint32_t flash_block_num_all = 0;
-static uint32_t flash_block_size_byte = 65536;
+static uint32_t flash_block_size_byte = FLASH_DEFAULT_BLOCK_SIZE;
 static uint32_t flash_density_bytes = 0;
 static uint8_t flash_address_bytes = 3;
 #endif
@@ -411,6 +414,7 @@ flash_status_t flash_wait(void)
 flash_status_t flash_init(void)
 {
     flash_status_t ret;
+    uint8_t        n;
 
     flash_initialized = FALSE;
 
@@ -439,9 +443,32 @@ flash_status_t flash_init(void)
         {
             if (HAL_SPI_Receive(spi, answer, 3, FLASH_TIMEOUT_TICK) == HAL_OK)
             {
-#if FLASH_TYPE == FLASH_TYPE_SFDP
+#if FLASH_TYPE == FLASH_TYPE_AUTO_DETECT
                 SET_CS_HIGH();
-                if (flash_read_sfdp() == FLASH_SUCCESS)
+                ret = flash_read_sfdp();
+                if (ret != FLASH_SUCCESS)
+                {
+                    /* SFDP was unsuccessful, trying to calculate memory capacity */
+                    /* from ID's 3rd byte */
+                    /* BCD to binary conversion */
+                    n = (answer[2] >> 4) * 10;
+                    n += (answer[2] & 0xF);
+                    flash_density_bytes = 64u << n;
+                    if (flash_density_bytes > 16 *1024 *1024)
+                    {
+                        /* Over 128 MBit, so four address bytes needed */
+                        flash_address_bytes = 4;
+                    }
+                    else
+                    {
+                        flash_address_bytes = 3;
+                    }
+                    flash_block_size_byte = FLASH_DEFAULT_BLOCK_SIZE;
+                    flash_block_num_all = flash_density_bytes / flash_block_size_byte;
+                    cmd_erase[0] = FLASH_DEFAULT_ERASE_COMMAND;
+                    ret = FLASH_SUCCESS;
+                }
+                if (ret == FLASH_SUCCESS)
 #elif FLASH_TYPE == FLASH_TYPE_M25P40
                 if (answer[0] == 0x20 && answer[1] == 0x20 && answer[2] == 0x13)
 #elif FLASH_TYPE == FLASH_TYPE_W25Q16DV_64K
@@ -454,7 +481,7 @@ flash_status_t flash_init(void)
                 if (answer[0] == 0x01 && answer[1] == 0x20 && answer[2] == 0x18)
 #endif
                 {
-#if FLASH_TYPE != FLASH_TYPE_SFDP
+#if FLASH_TYPE != FLASH_TYPE_AUTO_DETECT
                     flash_block_num_all = FLASH_BLOCK_NUM_ALL;
 #endif
                     snprintf(dfu_flash_descr, sizeof(dfu_flash_descr),

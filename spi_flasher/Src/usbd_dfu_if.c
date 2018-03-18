@@ -99,7 +99,23 @@ extern SPI_HandleTypeDef hspi1;
 #define FLASH_DESC_STR      "@SPI Flash/0x00000000/32*064Kg"
 
 /* USER CODE BEGIN PRIVATE_DEFINES */
+#define ENABLE_DFU_DEBUG    0
 
+#if ENABLE_DFU_DEBUG
+#define DFU_DEBUG_MSG(...)    do { \
+        UART_printf(__VA_ARGS__); \
+    } while (0);
+#else
+#define DFU_DEBUG_MSG(...)
+#endif
+
+#define DFU_INFO_MSG(...)    do { \
+        UART_printf(__VA_ARGS__); \
+    } while (0);
+#define DFU_ERROR_MSG(...)    do { \
+        UART_printf("%s:%i ERROR: ", __FUNCTION__, __LINE__); \
+        UART_printf(__VA_ARGS__); \
+    } while (0);
 /* USER CODE END PRIVATE_DEFINES */
 
 /**
@@ -231,12 +247,12 @@ uint16_t MEM_If_Erase_FS(uint32_t Add)
         fl_ret = pifs_flash_erase(ba);
         if (fl_ret == PIFS_SUCCESS)
         {
-            UART_printf("Erased block %i\r\n", ba);
+            DFU_DEBUG_MSG("Erased block %i\r\n", ba);
             ret = USBD_OK;
         }
         else
         {
-            UART_printf("ERROR: cannot erase block! Status: %i\r\n", fl_ret);
+            DFU_ERROR_MSG("Cannot erase block! Status: %i\r\n", fl_ret);
         }
     }
 
@@ -273,12 +289,12 @@ uint16_t MEM_If_Write_FS(uint8_t *src, uint8_t *dest, uint32_t Len)
         fl_ret = pifs_flash_write(ba, pa, ofs, src, Len);
         if (fl_ret == PIFS_SUCCESS)
         {
-            UART_printf("Written block %i, page %i\r\n", ba, pa);
+            DFU_DEBUG_MSG("Written block %i, page %i\r\n", ba, pa);
             ret = USBD_OK;
         }
         else
         {
-            UART_printf("ERROR: cannot write! Status: %i\r\n", fl_ret);
+            DFU_ERROR_MSG("Cannot write! Status: %i\r\n", fl_ret);
         }
     }
 
@@ -316,11 +332,11 @@ uint8_t *MEM_If_Read_FS(uint8_t *src, uint8_t *dest, uint32_t Len)
         fl_ret = pifs_flash_read(ba, pa, ofs, page_buf, Len);
         if (fl_ret == PIFS_SUCCESS)
         {
-            UART_printf("Read block %i, page %i\r\n", ba, pa);
+            DFU_DEBUG_MSG("Read block %i, page %i\r\n", ba, pa);
         }
         else
         {
-            UART_printf("ERROR: cannot read! Status: %i\r\n", fl_ret);
+            DFU_ERROR_MSG("Cannot read! Status: %i\r\n", fl_ret);
         }
     }
 
@@ -340,7 +356,7 @@ uint16_t MEM_If_GetStatus_FS(uint32_t Add, uint8_t Cmd, uint8_t *buffer)
   /* USER CODE BEGIN 5 */
     uint16_t ret = USBD_FAIL;
 
-    UART_printf("Get status, add: 0x%X, cmd: %i, buf: 0x%X\r\n", Add, Cmd, buffer);
+    DFU_DEBUG_MSG("Get status, add: 0x%X, cmd: %i, buf: 0x%X\r\n", Add, Cmd, buffer);
 
     ret = flash_init();
     if (ret == USBD_OK)
@@ -395,7 +411,7 @@ uint16_t flash_init(void)
         }
         else
         {
-            UART_printf("ERROR: cannot initialize flash! Status: %i\r\n", fl_ret);
+            DFU_ERROR_MSG("Cannot initialize flash! Status: %i\r\n", fl_ret);
             SET_CRESET_OFF();
         }
     }
@@ -411,11 +427,11 @@ void release_flash_interface(void)
 {
     GPIO_InitTypeDef GPIO_InitStruct;
 
-    UART_printf("Release CRESET\r\n");
+    DFU_INFO_MSG("Release CRESET\r\n");
     SET_CRESET_OFF();
     osDelay(100);
     HAL_SPI_DeInit(&hspi1);
-    UART_printf("SPI deinitialized\r\n");
+    DFU_INFO_MSG("SPI deinitialized\r\n");
     GPIO_InitStruct.Pin = SPI_CS_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -425,12 +441,12 @@ void release_flash_interface(void)
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-    UART_printf("GPIO pins released\r\n");
+    DFU_INFO_MSG("GPIO pins released\r\n");
 
-    UART_printf("Set CRESET\r\n");
+    DFU_INFO_MSG("Set CRESET\r\n");
     SET_CRESET_ON();
     osDelay(50);
-    UART_printf("Release CRESET\r\n");
+    DFU_INFO_MSG("Release CRESET\r\n");
     SET_CRESET_OFF();
 }
 
@@ -444,7 +460,7 @@ uint16_t flash_deinit(void)
         fl_ret = pifs_flash_delete();
         if (fl_ret == PIFS_SUCCESS)
         {
-            UART_printf("Flash de-initialized\r\n");
+            DFU_INFO_MSG("Flash de-initialized\r\n");
 
             release_flash_interface();
 
@@ -453,7 +469,7 @@ uint16_t flash_deinit(void)
         }
         else
         {
-            UART_printf("ERROR: cannot de-initialize flash! Status: %i\r\n", fl_ret);
+            DFU_ERROR_MSG("Cannot de-initialize flash! Status: %i\r\n", fl_ret);
         }
     }
 

@@ -61,6 +61,7 @@
 #include "common.h"
 #include "uart.h"
 
+#define USE_LEAFLABS_MAPLE      0   /* 1: LeafLabs Maple, 0: Blue pill */
 #define DISABLE_WATCHDOG_MAGIC  0xDEADBEEF
 /* USER CODE END Includes */
 
@@ -102,6 +103,30 @@ extern void release_flash_interface(void);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
+/**
+ * Connect USB device to host.
+ */
+inline void USB_enablePullup(void)
+{
+#if USE_LEAFLABS_MAPLE == 0
+    HAL_GPIO_WritePin(USB_DISCONNECT_GPIO_Port, USB_DISCONNECT_Pin, GPIO_PIN_SET);
+#else
+    HAL_GPIO_WritePin(USB_DISCONNECT_GPIO_Port, USB_DISCONNECT_Pin, GPIO_PIN_RESET);
+#endif
+}
+
+/**
+ * Disconnect USB device to host.
+ */
+inline void USB_disablePullup(void)
+{
+#if USE_LEAFLABS_MAPLE == 0
+    HAL_GPIO_WritePin(USB_DISCONNECT_GPIO_Port, USB_DISCONNECT_Pin, GPIO_PIN_RESET);
+#else
+    HAL_GPIO_WritePin(USB_DISCONNECT_GPIO_Port, USB_DISCONNECT_Pin, GPIO_PIN_SET);
+#endif
+}
+
 static inline void LED_on(void)
 {
     HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_SET);
@@ -353,12 +378,16 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, CRESET_Pin|SPI_CS_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(USB_DISCONNECT_GPIO_Port, USB_DISCONNECT_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : LED_RED_Pin */
   GPIO_InitStruct.Pin = LED_RED_Pin;
@@ -377,6 +406,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : USB_DISCONNECT_Pin */
+  GPIO_InitStruct.Pin = USB_DISCONNECT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(USB_DISCONNECT_GPIO_Port, &GPIO_InitStruct);
 
 }
 
@@ -428,6 +463,8 @@ void StartDefaultTask(void const * argument)
   MX_USB_DEVICE_Init();
 
   /* USER CODE BEGIN 5 */
+  UART_printf("Connect USB device (enable 1.5k pull-up resistor on D+)\r\n");
+  USB_enablePullup();
   release_flash_interface();
   /* Infinite loop */
   for(;;)

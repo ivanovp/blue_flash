@@ -67,6 +67,8 @@
 #define CRESET_GPIO_Port GPIOA
 #define SPI_CS_Pin GPIO_PIN_4
 #define SPI_CS_GPIO_Port GPIOA
+#define USB_DISCONNECT_Pin GPIO_PIN_9
+#define USB_DISCONNECT_GPIO_Port GPIOB
 
 /* ########################## Assert Selection ############################## */
 /**

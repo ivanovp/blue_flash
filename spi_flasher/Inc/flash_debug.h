@@ -1,5 +1,5 @@
 /**
- * @file        pifs_debug.h
+ * @file        flash_debug.h
  * @brief       Common definitions
  * @author      Copyright (C) Peter Ivanov, 2017
  *
@@ -20,8 +20,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef _INCLUDE_PIFS_DEBUG_H_
-#define _INCLUDE_PIFS_DEBUG_H_
+#ifndef _INCLUDE_FLASH_DEBUG_H_
+#define _INCLUDE_FLASH_DEBUG_H_
 
 #include <stdio.h>
 #include <stdint.h>
@@ -41,82 +41,82 @@
 #endif
 #endif
 
-#define PIFS_ASSERT(expression) do {                                       \
+#define FLASH_ASSERT(expression) do {                                       \
         if (!((expression)))                                               \
         {                                                                  \
             printf("ERROR: Assertion '%s' failed. File: %s, line: %i\r\n", \
                     TOSTR(expression),                                     \
                     __FILE__, __LINE__                                     \
                    );                                                      \
-            pifs_delete();                                                 \
+            flash_delete();                                                 \
             SOFTWARE_BREAKPOINT();                                         \
             exit(-1);                                                      \
         }                                                                  \
     } while (0);
 
-#define PIFS_PRINT_MSG(...) printf(__VA_ARGS__)
+#define FLASH_PRINT_MSG(...) printf(__VA_ARGS__)
 
-#if (PIFS_DEBUG_LEVEL >= 1)
-#define PIFS_ERROR_MSG(...)    do { \
+#if (FLASH_DEBUG_LEVEL >= 1)
+#define FLASH_ERROR_MSG(...)    do { \
         printf("%s:%i ERROR: ", __FUNCTION__, __LINE__);        \
         printf(__VA_ARGS__);                                    \
         fflush(stdout);                                         \
     } while (0);
 #else
-#define PIFS_ERROR_MSG(...)
+#define FLASH_ERROR_MSG(...)
 #endif
 
-#if (PIFS_DEBUG_LEVEL >= 1)
-#define PIFS_FATAL_ERROR_MSG(...)    do {                       \
+#if (FLASH_DEBUG_LEVEL >= 1)
+#define FLASH_FATAL_ERROR_MSG(...)    do {                       \
         printf("%s:%i FATAL_ERROR: ", __FUNCTION__, __LINE__);  \
         printf( __VA_ARGS__);                                   \
-        pifs_delete();                                          \
+        flash_delete();                                          \
         fflush(stdout);                                         \
         SOFTWARE_BREAKPOINT();                                  \
         exit(-1);                                               \
     } while (0);
 #else
-#define PIFS_FATAL_ERROR_MSG(...)
+#define FLASH_FATAL_ERROR_MSG(...)
 #endif
 
-#if (PIFS_DEBUG_LEVEL >= 2)
-#define PIFS_WARNING_MSG(...)    do { \
+#if (FLASH_DEBUG_LEVEL >= 2)
+#define FLASH_WARNING_MSG(...)    do { \
         printf("%s:%i WARNING: ", __FUNCTION__, __LINE__);      \
         printf(__VA_ARGS__);                                    \
         fflush(stdout);                                         \
     } while (0);
 #else
-#define PIFS_WARNING_MSG(...)
+#define FLASH_WARNING_MSG(...)
 #endif
 
-#if (PIFS_DEBUG_LEVEL >= 3)
-#define PIFS_NOTICE_MSG(...)    do {                            \
+#if (FLASH_DEBUG_LEVEL >= 3)
+#define FLASH_NOTICE_MSG(...)    do {                            \
         printf("%s ", __FUNCTION__);                            \
         printf(__VA_ARGS__);                                    \
         fflush(stdout);                                         \
     } while (0);
 #else
-#define PIFS_NOTICE_MSG(...)
+#define FLASH_NOTICE_MSG(...)
 #endif
 
-#if (PIFS_DEBUG_LEVEL >= 4)
-#define PIFS_INFO_MSG(...)    do {                              \
+#if (FLASH_DEBUG_LEVEL >= 4)
+#define FLASH_INFO_MSG(...)    do {                              \
         printf("%s ", __FUNCTION__);                            \
         printf(__VA_ARGS__);                                    \
         fflush(stdout);                                         \
     } while (0);
 #else
-#define PIFS_INFO_MSG(...)
+#define FLASH_INFO_MSG(...)
 #endif
 
-#if (PIFS_DEBUG_LEVEL >= 5)
-#define PIFS_DEBUG_MSG(...)    do {                             \
+#if (FLASH_DEBUG_LEVEL >= 5)
+#define FLASH_DEBUG_MSG(...)    do {                             \
         printf("%s ", __FUNCTION__);                            \
         printf(__VA_ARGS__);                                    \
         fflush(stdout);                                         \
     } while (0);
 #else
-#define PIFS_DEBUG_MSG(...)
+#define FLASH_DEBUG_MSG(...)
 #endif
 
-#endif /* _INCLUDE_PIFS_DEBUG_H_ */
+#endif /* _INCLUDE_FLASH_DEBUG_H_ */

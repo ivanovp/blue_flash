@@ -11,7 +11,6 @@ SOURCES += ./spi_flasher/STM32F103C8_FLASH.ld \
 ./spi_flasher/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_flash_ex.c \
 ./spi_flasher/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_gpio.c \
 ./spi_flasher/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_gpio_ex.c \
-./spi_flasher/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_iwdg.c \
 ./spi_flasher/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_pcd.c \
 ./spi_flasher/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_pcd_ex.c \
 ./spi_flasher/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_pwr.c \
@@ -79,7 +78,6 @@ HEADERS += ./spi_flasher/Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f103xb.h
 ./spi_flasher/Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h \
 ./spi_flasher/Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_gpio.h \
 ./spi_flasher/Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_gpio_ex.h \
-./spi_flasher/Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_iwdg.h \
 ./spi_flasher/Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd.h \
 ./spi_flasher/Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd_ex.h \
 ./spi_flasher/Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h \
@@ -95,6 +93,7 @@ HEADERS += ./spi_flasher/Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f103xb.h
 ./spi_flasher/Inc/common.h \
 ./spi_flasher/Inc/flash.h \
 ./spi_flasher/Inc/flash_config.h \
+./spi_flasher/Inc/flash_debug.h \
 ./spi_flasher/Inc/main.h \
 ./spi_flasher/Inc/stm32f1xx_hal_conf.h \
 ./spi_flasher/Inc/stm32f1xx_it.h \
@@ -124,8 +123,7 @@ HEADERS += ./spi_flasher/Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f103xb.h
 ./spi_flasher/Middlewares/Third_Party/FreeRTOS/Source/include/semphr.h \
 ./spi_flasher/Middlewares/Third_Party/FreeRTOS/Source/include/task.h \
 ./spi_flasher/Middlewares/Third_Party/FreeRTOS/Source/include/timers.h \
-./spi_flasher/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3/portmacro.h \
-./spi_flasher/Src/pifs_debug.h
+./spi_flasher/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3/portmacro.h
 
 INCLUDEPATH += .
 INCLUDEPATH += ./.metadata
@@ -141,7 +139,13 @@ INCLUDEPATH += ./spi_flasher/Debug/Drivers
 INCLUDEPATH += ./spi_flasher/Debug/Middlewares
 INCLUDEPATH += ./spi_flasher/Debug/Src
 INCLUDEPATH += ./spi_flasher/Debug/startup
+INCLUDEPATH += ./spi_flasher/Debug/Drivers/CMSIS
 INCLUDEPATH += ./spi_flasher/Debug/Drivers/STM32F1xx_HAL_Driver
+INCLUDEPATH += ./spi_flasher/Debug/Drivers/CMSIS/Device
+INCLUDEPATH += ./spi_flasher/Debug/Drivers/CMSIS/Device/ST
+INCLUDEPATH += ./spi_flasher/Debug/Drivers/CMSIS/Device/ST/STM32F1xx
+INCLUDEPATH += ./spi_flasher/Debug/Drivers/CMSIS/Device/ST/STM32F1xx/Source
+INCLUDEPATH += ./spi_flasher/Debug/Drivers/CMSIS/Device/ST/STM32F1xx/Source/Templates
 INCLUDEPATH += ./spi_flasher/Debug/Drivers/STM32F1xx_HAL_Driver/Src
 INCLUDEPATH += ./spi_flasher/Debug/Middlewares/ST
 INCLUDEPATH += ./spi_flasher/Debug/Middlewares/Third_Party

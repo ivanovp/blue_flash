@@ -60,6 +60,7 @@
 
 #include "common.h"
 #include "uart.h"
+#include "usbd_dfu_if.h"
 
 #define USE_LEAFLABS_MAPLE      0   /* 1: LeafLabs Maple, 0: Blue pill */
 #define DISABLE_WATCHDOG_MAGIC  0xDEADBEEF
@@ -98,8 +99,6 @@ void StartDefaultTask(void const * argument);
 /* Private function prototypes -----------------------------------------------*/
 
 void watchdogTask(void const * arg);
-extern uint16_t flash_deinit(void);
-extern void release_flash_interface(void);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
@@ -465,14 +464,15 @@ void StartDefaultTask(void const * argument)
   /* USER CODE BEGIN 5 */
   UART_printf("Connect USB device (enable 1.5k pull-up resistor on D+)\r\n");
   USB_enablePullup();
-  release_flash_interface();
+  dfu_flash_init();
+  dfu_release_flash_interface();
   /* Infinite loop */
   for(;;)
   {
       /* After 2 seconds, release CRESET automatically to let the FPGA run */
       if (osSemaphoreWait(creset_sem, 2000) != osOK)
       {
-          flash_deinit();
+          dfu_flash_deinit();
       }
   }
   /* USER CODE END 5 */ 

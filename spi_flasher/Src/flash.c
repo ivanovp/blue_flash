@@ -23,15 +23,15 @@
 #include <stdio.h>
 #include <string.h>
 
-//#include "api_pifs.h"
+//#include "api_flash.h"
 #include "flash.h"
-#include "pifs_debug.h"
+#include "flash_debug.h"
 #include "uart.h"
 #include "stm32f1xx_hal.h"
 #include "cmsis_os.h"
 
-#ifndef PIFS_FLASH_4BYTE_ADDRESS
-#define PIFS_FLASH_4BYTE_ADDRESS	0
+#ifndef FLASH_4BYTE_ADDRESS
+#define FLASH_4BYTE_ADDRESS	0
 #endif
 
 #define FLASH_ENABLE_DEBUG          1
@@ -48,7 +48,7 @@
 #define SET_CS_HIGH()   do { \
 		HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_SET); \
 	} while (0);
-#if PIFS_FLASH_4BYTE_ADDRESS
+#if FLASH_4BYTE_ADDRESS
 #define WRITE_ADDRESS(buf, block_address, page_address, page_offset) do { \
         (buf)[0] = (block_address) >> 8; \
 		(buf)[1] = (block_address); \
@@ -78,7 +78,25 @@
 #endif
 
 extern SPI_HandleTypeDef hspi1;
-
+uint8_t dfu_flash_descr[DFU_FLASH_DESCR_SIZE] =
+/*        .-- human readable name
+ *        |         .-- base address
+ *        |         |          .-- number of sectors (erasable units)
+ *        |         |          |   .-- sector size in specified unit (kilobytes)
+ *        |         |          |   | .-- sector size unit (K=kilobytes)
+ *        |         |          |   | |.-- sector type "g": Readable, Erasable, Writable
+ *        |         |          |   | ||
+ *        v         v          v   v vv             */
+        "@SPI Flash/0x00000000/32*064Kg";
+/* 1 digit for the sector type as follows:
+ * – a (0x41): Readable
+ * – b (0x42): Erasable
+ * – c (0x43): Readable and Erasable
+ * - d (0x44): Writable
+ * – e (0x45): Readable and Writeable
+ * – f (0x46): Erasable and Writeable
+ * – g (0x47): Readable, Erasable and Writable
+ */
 static SPI_HandleTypeDef *spi = &hspi1;
 static bool_t flash_initialized = FALSE;
 static const uint8_t cmd_dummy[1]            = { 0xFF };
@@ -86,7 +104,7 @@ static const uint8_t cmd_power_up[4]         = { 0xAB, 0, 0, 0 };
 static const uint8_t cmd_power_down[1]       = { 0xB9 };
 static const uint8_t cmd_read_id[1]          = { 0x9F };
 static const uint8_t cmd_read_status_reg[1]  = { 0x05 };
-#if PIFS_FLASH_4BYTE_ADDRESS
+#if FLASH_4BYTE_ADDRESS
 static const uint8_t cmd_enter_4byte_mode[1] = { 0xB7 };
 static uint8_t cmd_erase[5]                  = { 0xD8 };
 static uint8_t cmd_read_data[5]              = { 0x13 };
@@ -102,6 +120,7 @@ static uint8_t answer[3];
 static osSemaphoreId dma_finished;
 osSemaphoreDef(dma_finished);
 #endif
+static uint32_t sector_count = 0;
 
 #if FLASH_ENABLE_DMA
 /**
@@ -126,19 +145,19 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 #endif
 
 /**
- * @brief pifs_flash_write_enable Run write enable command. Necessary before
+ * @brief flash_write_enable Run write enable command. Necessary before
  * writing or erasing the flash memory.
  *
- * @return PIFS_SUCCESS if write enabled.
+ * @return FLASH_SUCCESS if write enabled.
  */
-pifs_status_t pifs_flash_write_enable(void)
+flash_status_t flash_write_enable(void)
 {
-    pifs_status_t ret = PIFS_ERROR_FLASH_GENERAL;
+    flash_status_t ret = FLASH_ERROR_FLASH_GENERAL;
 
     SET_CS_LOW();
     if (HAL_SPI_Transmit(spi, cmd_write_enable, sizeof(cmd_write_enable), FLASH_TIMEOUT_TICK) == HAL_OK)
 	{
-		ret = PIFS_SUCCESS;
+        ret = FLASH_SUCCESS;
 	}
 	SET_CS_HIGH();
 
@@ -146,13 +165,13 @@ pifs_status_t pifs_flash_write_enable(void)
 }
 
 /**
- * @brief pifs_flash_wait Wait for end of write/erase.
+ * @brief flash_wait Wait for end of write/erase.
  *
- * @return PIFS_SUCCESS if write or erase operation finished successfully.
+ * @return FLASH_SUCCESS if write or erase operation finished successfully.
  */
-pifs_status_t pifs_flash_wait(void)
+flash_status_t flash_wait(void)
 {
-    pifs_status_t ret = PIFS_ERROR_FLASH_TIMEOUT;
+    flash_status_t ret = FLASH_ERROR_FLASH_TIMEOUT;
     uint32_t      tick_start;
 
     tick_start = osKernelSysTick();
@@ -165,29 +184,29 @@ pifs_status_t pifs_flash_wait(void)
             {
                 if (!(answer[0] & STATUS_REG_WIP))
                 {
-                    ret = PIFS_SUCCESS;
+                    ret = FLASH_SUCCESS;
                 }
             }
         }
         SET_CS_HIGH();
-    } while (ret != PIFS_SUCCESS && (osKernelSysTick() - tick_start) < FLASH_WRITE_TIMEOUT_TICK);
+    } while (ret != FLASH_SUCCESS && (osKernelSysTick() - tick_start) < FLASH_WRITE_TIMEOUT_TICK);
 
     return ret;
 }
 
 /**
- * @brief pifs_flash_init Initialize flash driver.
+ * @brief flash_init Initialize flash driver.
  *
- * @return PIFS_SUCCESS if flash memory is identified and initialized.
+ * @return FLASH_SUCCESS if flash memory is identified and initialized.
  */
-pifs_status_t pifs_flash_init(void)
+flash_status_t flash_init(void)
 {
-    pifs_status_t ret;
+    flash_status_t ret;
 
     flash_initialized = FALSE;
 
 #if FLASH_ENABLE_DMA
-    ret = PIFS_ERROR_FLASH_GENERAL;
+    ret = FLASH_ERROR_FLASH_GENERAL;
     dma_finished = osSemaphoreCreate(osSemaphore(dma_finished), 1);
     if (dma_finished)
     {
@@ -196,7 +215,7 @@ pifs_status_t pifs_flash_init(void)
     if (dma_finished)
 #endif
     {
-        ret = PIFS_ERROR_FLASH_INIT;
+        ret = FLASH_ERROR_FLASH_INIT;
         SET_CS_LOW();
         if (HAL_SPI_Transmit(spi, cmd_power_up, sizeof(cmd_power_up), FLASH_TIMEOUT_TICK) == HAL_OK)
         {
@@ -223,8 +242,12 @@ pifs_status_t pifs_flash_init(void)
                 if (answer[0] == 0x01 && answer[1] == 0x20 && answer[2] == 0x18)
 #endif
                 {
+                    snprintf(dfu_flash_descr, sizeof(dfu_flash_descr),
+                             "@SPI Flash ID: %02X %02X %02X/0x00000000/%i*064Kg",
+                             answer[0], answer[1], answer[2], sector_count
+                            );
                     flash_initialized = TRUE;
-                    ret = PIFS_SUCCESS;
+                    ret = FLASH_SUCCESS;
                 }
                 else
                 {
@@ -235,18 +258,18 @@ pifs_status_t pifs_flash_init(void)
         }
         SET_CS_HIGH();
 
-#if PIFS_FLASH_4BYTE_ADDRESS
-        if (ret == PIFS_SUCCESS)
+#if FLASH_4BYTE_ADDRESS
+        if (ret == FLASH_SUCCESS)
         {
             //osDelay(1);
             SET_CS_LOW();
             if (HAL_SPI_Transmit(spi, cmd_enter_4byte_mode, sizeof(cmd_enter_4byte_mode), FLASH_TIMEOUT) == HAL_OK)
             {
-                ret = PIFS_SUCCESS;
+                ret = FLASH_SUCCESS;
             }
             else
             {
-                ret = PIFS_ERROR_FLASH_INIT;
+                ret = FLASH_ERROR_FLASH_INIT;
             }
             SET_CS_HIGH();
         }
@@ -257,13 +280,13 @@ pifs_status_t pifs_flash_init(void)
 }
 
 /**
- * @brief pifs_flash_delete De-initialize flash driver.
+ * @brief flash_delete De-initialize flash driver.
  *
- * @return PIFS_SUCCESS if successfully de-initialized.
+ * @return FLASH_SUCCESS if successfully de-initialized.
  */
-pifs_status_t pifs_flash_delete(void)
+flash_status_t flash_delete(void)
 {
-    pifs_status_t ret = PIFS_ERROR_FLASH_GENERAL;
+    flash_status_t ret = FLASH_ERROR_FLASH_GENERAL;
 
 #if FLASH_ENABLE_DMA
     if (osSemaphoreDelete(dma_finished) == osOK)
@@ -275,35 +298,35 @@ pifs_status_t pifs_flash_delete(void)
         }
         SET_CS_HIGH();
         flash_initialized = FALSE;
-        ret = PIFS_SUCCESS;
+        ret = FLASH_SUCCESS;
     }
 
     return ret;
 }
 
 /**
- * @brief pifs_flash_read Read from flash memory.
+ * @brief flash_read Read from flash memory.
  *
  * @param[in] a_block_address Address of block.
  * @param[in] a_page_address  Address of the page in block.
  * @param[in] a_page_offset   Offset in page.
  * @param[out] a_buf          Buffer to fill.
  * @param[in] a_buf_size      Size of buffer.
- * @return PIFS_SUCCESS if read successfully finished.
+ * @return FLASH_SUCCESS if read successfully finished.
  */
-pifs_status_t pifs_flash_read(pifs_block_address_t a_block_address, pifs_page_address_t a_page_address, pifs_page_offset_t a_page_offset, void * const a_buf, size_t a_buf_size)
+flash_status_t flash_read(flash_block_address_t a_block_address, flash_page_address_t a_page_address, flash_page_offset_t a_page_offset, void * const a_buf, size_t a_buf_size)
 {
-    pifs_status_t ret = PIFS_ERROR_FLASH_INIT;
-    long int offset = a_block_address * PIFS_FLASH_BLOCK_SIZE_BYTE 
-        + a_page_address * PIFS_FLASH_PAGE_SIZE_BYTE
+    flash_status_t ret = FLASH_ERROR_FLASH_INIT;
+    long int offset = a_block_address * FLASH_BLOCK_SIZE_BYTE
+        + a_page_address * FLASH_PAGE_SIZE_BYTE
         + a_page_offset;
 
     if (flash_initialized)
     {
-        ret = PIFS_ERROR_FLASH_READ;
-        if ((offset + a_buf_size) <= PIFS_FLASH_SIZE_BYTE_ALL
-#if PIFS_FLASH_BLOCK_RESERVED_NUM > 0
-                && offset >= (PIFS_FLASH_BLOCK_RESERVED_NUM * PIFS_FLASH_BLOCK_SIZE_BYTE)
+        ret = FLASH_ERROR_FLASH_READ;
+        if ((offset + a_buf_size) <= FLASH_SIZE_BYTE_ALL
+#if FLASH_BLOCK_RESERVED_NUM > 0
+                && offset >= (FLASH_BLOCK_RESERVED_NUM * FLASH_BLOCK_SIZE_BYTE)
 #endif
                 )
         {
@@ -316,13 +339,13 @@ pifs_status_t pifs_flash_read(pifs_block_address_t a_block_address, pifs_page_ad
                 {
                     if (osSemaphoreWait(dma_finished, FLASH_DMA_TIMEOUT_MS) == osOK)
                     {
-                        ret = PIFS_SUCCESS;
+                        ret = FLASH_SUCCESS;
                     }
                 }
 #else
                 if (HAL_SPI_Receive(spi, a_buf, a_buf_size, FLASH_TIMEOUT_TICK) == HAL_OK)
                 {
-                    ret = PIFS_SUCCESS;
+                    ret = FLASH_SUCCESS;
                 }
 #endif
             }
@@ -343,33 +366,33 @@ pifs_status_t pifs_flash_read(pifs_block_address_t a_block_address, pifs_page_ad
 }
 
 /**
- * @brief pifs_flash_write Write to flash memory.
+ * @brief flash_write Write to flash memory.
  *
  * @param[in] a_block_address Address of block.
  * @param[in] a_page_address  Address of the page in block.
  * @param[in] a_page_offset   Offset in page.
  * @param[in] a_buf           Buffer to write.
  * @param[in] a_buf_size      Size of buffer.
- * @return PIFS_SUCCESS if write successfully finished.
+ * @return FLASH_SUCCESS if write successfully finished.
  */
-pifs_status_t pifs_flash_write(pifs_block_address_t a_block_address, pifs_page_address_t a_page_address, pifs_page_address_t a_page_offset, const void * const a_buf, size_t a_buf_size)
+flash_status_t flash_write(flash_block_address_t a_block_address, flash_page_address_t a_page_address, flash_page_address_t a_page_offset, const void * const a_buf, size_t a_buf_size)
 {
-    pifs_status_t ret = PIFS_ERROR_FLASH_INIT;
-    long int offset = a_block_address * PIFS_FLASH_BLOCK_SIZE_BYTE 
-        + a_page_address * PIFS_FLASH_PAGE_SIZE_BYTE
+    flash_status_t ret = FLASH_ERROR_FLASH_INIT;
+    long int offset = a_block_address * FLASH_BLOCK_SIZE_BYTE
+        + a_page_address * FLASH_PAGE_SIZE_BYTE
         + a_page_offset;
     
     if (flash_initialized)
     {
-        ret = PIFS_ERROR_FLASH_WRITE;
-        if ((offset + a_buf_size) <= PIFS_FLASH_SIZE_BYTE_ALL
-#if PIFS_FLASH_BLOCK_RESERVED_NUM > 0
-                && offset >= (PIFS_FLASH_BLOCK_RESERVED_NUM * PIFS_FLASH_BLOCK_SIZE_BYTE)
+        ret = FLASH_ERROR_FLASH_WRITE;
+        if ((offset + a_buf_size) <= FLASH_SIZE_BYTE_ALL
+#if FLASH_BLOCK_RESERVED_NUM > 0
+                && offset >= (FLASH_BLOCK_RESERVED_NUM * FLASH_BLOCK_SIZE_BYTE)
 #endif
                 )
         {
-            ret = pifs_flash_write_enable();
-            if (ret == PIFS_SUCCESS)
+            ret = flash_write_enable();
+            if (ret == FLASH_SUCCESS)
             {
                 SET_CS_LOW();
                 WRITE_ADDRESS(&cmd_page_program[1], a_block_address, a_page_address, a_page_offset);
@@ -380,20 +403,20 @@ pifs_status_t pifs_flash_write(pifs_block_address_t a_block_address, pifs_page_a
                     {
                         if (osSemaphoreWait(dma_finished, FLASH_DMA_TIMEOUT_MS) == osOK)
                         {
-                            ret = PIFS_SUCCESS;
+                            ret = FLASH_SUCCESS;
                         }
                     }
 #else
                     if (HAL_SPI_Transmit(spi, a_buf, a_buf_size, FLASH_TIMEOUT_TICK) == HAL_OK)
                     {
-                        ret = PIFS_SUCCESS;
+                        ret = FLASH_SUCCESS;
                     }
 #endif
                 }
                 SET_CS_HIGH();
-                if (ret == PIFS_SUCCESS)
+                if (ret == FLASH_SUCCESS)
                 {
-                    ret = pifs_flash_wait();
+                    ret = flash_wait();
                 }
             }
         }
@@ -412,39 +435,39 @@ pifs_status_t pifs_flash_write(pifs_block_address_t a_block_address, pifs_page_a
 }
 
 /**
- * @brief pifs_flash_erase Erase a block.
+ * @brief flash_erase Erase a block.
  *
  * @param[in] a_block_address Block to erase.
  *
- * @return PIFS_SUCCESS if block was erased successfully.
+ * @return FLASH_SUCCESS if block was erased successfully.
  */
-pifs_status_t pifs_flash_erase(pifs_block_address_t a_block_address)
+flash_status_t flash_erase(flash_block_address_t a_block_address)
 {
-    pifs_status_t ret = PIFS_ERROR_FLASH_INIT;
-    long int offset = a_block_address * PIFS_FLASH_BLOCK_SIZE_BYTE;
+    flash_status_t ret = FLASH_ERROR_FLASH_INIT;
+    long int offset = a_block_address * FLASH_BLOCK_SIZE_BYTE;
     
     if (flash_initialized)
     {
-        ret = PIFS_ERROR_FLASH_ERASE;
-        if ((offset + PIFS_FLASH_BLOCK_SIZE_BYTE) <= PIFS_FLASH_SIZE_BYTE_ALL
-#if PIFS_FLASH_BLOCK_RESERVED_NUM > 0
-                && offset >= (PIFS_FLASH_BLOCK_RESERVED_NUM * PIFS_FLASH_BLOCK_SIZE_BYTE)
+        ret = FLASH_ERROR_FLASH_ERASE;
+        if ((offset + FLASH_BLOCK_SIZE_BYTE) <= FLASH_SIZE_BYTE_ALL
+#if FLASH_BLOCK_RESERVED_NUM > 0
+                && offset >= (FLASH_BLOCK_RESERVED_NUM * FLASH_BLOCK_SIZE_BYTE)
 #endif
             )
         {
-            ret = pifs_flash_write_enable();
-            if (ret == PIFS_SUCCESS)
+            ret = flash_write_enable();
+            if (ret == FLASH_SUCCESS)
             {
                 SET_CS_LOW();
                 WRITE_ADDRESS(&cmd_erase[1], a_block_address, 0, 0);
                 if (HAL_SPI_Transmit(spi, cmd_erase, sizeof(cmd_erase), FLASH_TIMEOUT_TICK) == HAL_OK)
                 {
-                    ret = PIFS_SUCCESS;
+                    ret = FLASH_SUCCESS;
                 }
                 SET_CS_HIGH();
-                if (ret == PIFS_SUCCESS)
+                if (ret == FLASH_SUCCESS)
                 {
-                    ret = pifs_flash_wait();
+                    ret = flash_wait();
                 }
             }
         }
@@ -463,9 +486,9 @@ pifs_status_t pifs_flash_erase(pifs_block_address_t a_block_address)
 }
 
 /**
- * @brief pifs_flash_print_stat Called by the terminal to print information
+ * @brief flash_print_stat Called by the terminal to print information
  * about flash memory.
  */
-void pifs_flash_print_stat(void)
+void flash_print_stat(void)
 {
 }

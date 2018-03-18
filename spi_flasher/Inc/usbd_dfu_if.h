@@ -132,7 +132,9 @@ extern USBD_DFU_MediaTypeDef USBD_DFU_fops_FS;
   */
 
 /* USER CODE BEGIN EXPORTED_FUNCTIONS */
-
+uint16_t dfu_flash_init(void);
+uint16_t dfu_flash_deinit(void);
+void dfu_release_flash_interface(void);
 /* USER CODE END EXPORTED_FUNCTIONS */
 
 /**

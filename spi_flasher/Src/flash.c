@@ -23,7 +23,6 @@
 #include <stdio.h>
 #include <string.h>
 
-//#include "api_flash.h"
 #include "flash.h"
 #include "flash_debug.h"
 #include "uart.h"
@@ -78,25 +77,27 @@
 #endif
 
 extern SPI_HandleTypeDef hspi1;
-uint8_t dfu_flash_descr[DFU_FLASH_DESCR_SIZE] =
-/*        .-- human readable name
- *        |         .-- base address
- *        |         |          .-- number of sectors (erasable units)
- *        |         |          |   .-- sector size in specified unit (kilobytes)
- *        |         |          |   | .-- sector size unit (K=kilobytes)
- *        |         |          |   | |.-- sector type "g": Readable, Erasable, Writable
- *        |         |          |   | ||
- *        v         v          v   v vv             */
-        "@SPI Flash/0x00000000/32*064Kg";
+/* Default value
+ *                               .-- '@' marks start of DFuSe flash descriptor
+ *                               |.-- human readable name
+ *                               ||                   .-- base address
+ *                               ||                   |          .-- number of sectors (erasable units)
+ *                               ||                   |          |   .-- sector size in specified unit (kilobytes)
+ *                               ||                   |          |   | .-- sector size unit (K=kilobytes)
+ *                               ||                   |          |   | |.-- sector type "g": Readable, Erasable, Writable
+ *                               ||                   |          |   | ||
+ *                               vv                   v          v   v vv             */
+#define DFU_FLASH_DESCR_DEFAULT "@SPI Flash not found/0x00000000/32*064Kg"
 /* 1 digit for the sector type as follows:
- * – a (0x41): Readable
- * – b (0x42): Erasable
- * – c (0x43): Readable and Erasable
+ * - a (0x41): Readable
+ * - b (0x42): Erasable
+ * - c (0x43): Readable and Erasable
  * - d (0x44): Writable
- * – e (0x45): Readable and Writeable
- * – f (0x46): Erasable and Writeable
- * – g (0x47): Readable, Erasable and Writable
+ * - e (0x45): Readable and Writable
+ * - f (0x46): Erasable and Writable
+ * - g (0x47): Readable, Erasable and Writable
  */
+uint8_t dfu_flash_descr[DFU_FLASH_DESCR_SIZE] = DFU_FLASH_DESCR_DEFAULT;
 static SPI_HandleTypeDef *spi = &hspi1;
 static bool_t flash_initialized = FALSE;
 static const uint8_t cmd_dummy[1]            = { 0xFF };
@@ -252,6 +253,7 @@ flash_status_t flash_init(void)
                 }
                 else
                 {
+                    strncpy(dfu_flash_descr, DFU_FLASH_DESCR_DEFAULT, sizeof(dfu_flash_descr));
                     FLASH_ERROR_MSG("Cannot identify flash: 0x%02X 0x%02X 0x%02X\r\n",
                                     answer[0], answer[1], answer[2]);
                 }

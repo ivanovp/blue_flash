@@ -23,13 +23,14 @@
 #ifndef _INCLUDE_FLASH_CONFIG_H_
 #define _INCLUDE_FLASH_CONFIG_H_
 
-#define FLASH_TYPE_M25P40           0
-#define FLASH_TYPE_M25P80           1
-#define FLASH_TYPE_N25Q128A         2
-#define FLASH_TYPE_S25FL127S_64K    3   /**< 64 KiB sector mode */
-#define FLASH_TYPE_W25Q16DV_64K     4   /**< 64 KiB sector mode */
-#define FLASH_TYPE_W25Q32BV_64K     5   /**< 64 KiB sector mode */
-#define FLASH_TYPE_W25Q256FV_64K    6   /**< 64 KiB sector mode */
+#define FLASH_TYPE_SFDP             0   /**< Autodetect, read SFDP */
+#define FLASH_TYPE_M25P40           1
+#define FLASH_TYPE_M25P80           2
+#define FLASH_TYPE_N25Q128A         3
+#define FLASH_TYPE_S25FL127S_64K    4   /**< 64 KiB sector mode */
+#define FLASH_TYPE_W25Q16DV_64K     5   /**< 64 KiB sector mode */
+#define FLASH_TYPE_W25Q32BV_64K     6   /**< 64 KiB sector mode */
+#define FLASH_TYPE_W25Q256FV_64K    7   /**< 64 KiB sector mode */
 
 /** Type of flash memory */
 #define FLASH_TYPE                  FLASH_TYPE_W25Q16DV_64K

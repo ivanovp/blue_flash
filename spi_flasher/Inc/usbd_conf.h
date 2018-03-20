@@ -105,9 +105,9 @@
 /*---------- -----------*/
 #define USBD_DFU_MAX_ITF_NUM     1
 /*---------- -----------*/
-#define USBD_DFU_XFER_SIZE     256
+#define USBD_DFU_XFER_SIZE     4096
 /*---------- -----------*/
-#define USBD_DFU_APP_DEFAULT_ADD     0x08000000
+#define USBD_DFU_APP_DEFAULT_ADD     0x0
 
 /****************************************/
 /* #define for FS and HS identification */

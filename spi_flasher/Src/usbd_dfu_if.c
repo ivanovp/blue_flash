@@ -235,14 +235,13 @@ uint16_t MEM_If_DeInit_FS(void)
 uint16_t MEM_If_Erase_FS(uint32_t Add)
 {
   /* USER CODE BEGIN 2 */
-	uint16_t ret = USBD_FAIL;
-    flash_status_t fl_ret;
+    uint16_t        ret = USBD_FAIL;
+    flash_status_t  fl_ret;
 
     ret = dfu_flash_init();
     if (ret == USBD_OK)
     {
         osSemaphoreRelease(creset_sem);
-        SET_CRESET_ON();
 
         fl_ret = flash_erase(Add);
         if (fl_ret == FLASH_SUCCESS)
@@ -270,26 +269,41 @@ uint16_t MEM_If_Erase_FS(uint32_t Add)
 uint16_t MEM_If_Write_FS(uint8_t *src, uint8_t *dest, uint32_t Len)
 {
   /* USER CODE BEGIN 3 */
-	uint16_t ret = USBD_FAIL;
-	uintptr_t addr = (uintptr_t) dest;
-    flash_status_t fl_ret;
+    uint16_t        ret = USBD_FAIL;
+    uintptr_t       addr = (uintptr_t) dest;
+    flash_status_t  fl_ret;
+    uint32_t        chunk_size = Len;
 
     ret = dfu_flash_init();
     if (ret == USBD_OK)
     {
         osSemaphoreRelease(creset_sem);
-        SET_CRESET_ON();
 
-        fl_ret = flash_write(addr, src, Len);
-        if (fl_ret == FLASH_SUCCESS)
+        do
         {
-            DFU_DEBUG_MSG("W0x%08X\r\n", addr);
-            ret = USBD_OK;
-        }
-        else
-        {
-            DFU_ERROR_MSG("Cannot write! Status: %i\r\n", fl_ret);
-        }
+            if (Len > FLASH_PAGE_SIZE_BYTE)
+            {
+                chunk_size = FLASH_PAGE_SIZE_BYTE;
+            }
+            else
+            {
+                chunk_size = Len;
+            }
+            fl_ret = flash_write(addr, src, chunk_size);
+            src += chunk_size;
+            addr += chunk_size;
+            Len -= chunk_size;
+            if (fl_ret == FLASH_SUCCESS)
+            {
+                DFU_DEBUG_MSG("W0x%08X\r\n", addr);
+                ret = USBD_OK;
+            }
+            else
+            {
+                DFU_ERROR_MSG("Cannot write! Status: %i\r\n", fl_ret);
+                ret = USBD_FAIL;
+            }
+        } while (Len > 0 && fl_ret == FLASH_SUCCESS);
     }
 
 	return ret;
@@ -307,25 +321,40 @@ uint8_t *MEM_If_Read_FS(uint8_t *src, uint8_t *dest, uint32_t Len)
 {
   /* Return a valid address to avoid HardFault */
   /* USER CODE BEGIN 4 */
-	uint16_t             ret;
-    uintptr_t            addr = (uintptr_t) src;
-    flash_status_t       fl_ret;
+    uint16_t        ret;
+    uintptr_t       addr = (uintptr_t) src;
+    flash_status_t  fl_ret;
+    uint32_t        chunk_size = Len;
+    uint32_t        pos = 0;
 
     ret = dfu_flash_init();
     if (ret == USBD_OK)
     {
         osSemaphoreRelease(creset_sem);
-        SET_CRESET_ON();
 
-        fl_ret = flash_read(addr, page_buf, Len);
-        if (fl_ret == FLASH_SUCCESS)
+        do
         {
-            DFU_DEBUG_MSG("R0x%08X\r\n", addr);
-        }
-        else
-        {
-            DFU_ERROR_MSG("Cannot read! Status: %i\r\n", fl_ret);
-        }
+            if (Len > FLASH_PAGE_SIZE_BYTE)
+            {
+                chunk_size = FLASH_PAGE_SIZE_BYTE;
+            }
+            else
+            {
+                chunk_size = Len;
+            }
+            fl_ret = flash_read(addr, &page_buf[pos], Len);
+            pos += chunk_size;
+            addr += chunk_size;
+            Len -= chunk_size;
+            if (fl_ret == FLASH_SUCCESS)
+            {
+                DFU_DEBUG_MSG("R0x%08X\r\n", addr);
+            }
+            else
+            {
+                DFU_ERROR_MSG("Cannot read! Status: %i\r\n", fl_ret);
+            }
+        } while (Len > 0 && fl_ret == FLASH_SUCCESS);
     }
 
 	return page_buf;
@@ -350,7 +379,6 @@ uint16_t MEM_If_GetStatus_FS(uint32_t Add, uint8_t Cmd, uint8_t *buffer)
     if (ret == USBD_OK)
     {
         osSemaphoreRelease(creset_sem);
-        SET_CRESET_ON();
 
         switch (Cmd)
         {

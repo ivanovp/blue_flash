@@ -552,8 +552,10 @@ flash_status_t flash_init(void)
                     flash_block_num_all = FLASH_BLOCK_NUM_ALL;
 #endif
                     snprintf(dfu_flash_descr, sizeof(dfu_flash_descr),
-                             "@SPI Flash (ID 0x%02X%02X%02X)/0x00000000/%i*%03iKg",
-                             answer[0], answer[1], answer[2], flash_block_num_all,
+                             "@SPI Flash (ID 0x%02X%02X%02X, Size: %i bytes)/0x00000000/%i*%03iKg",
+                             answer[0], answer[1], answer[2],
+                            flash_density_bytes,
+                            flash_block_num_all,
                             (flash_block_size_byte >> 10)
                             );
                     flash_initialized = TRUE;

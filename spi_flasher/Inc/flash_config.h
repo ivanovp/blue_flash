@@ -35,7 +35,9 @@
 /** Type of flash memory */
 #define FLASH_TYPE                  FLASH_TYPE_AUTO_DETECT
 
-#if FLASH_TYPE == FLASH_TYPE_M25P40
+#if FLASH_TYPE == FLASH_TYPE_AUTO_DETECT
+#define FLASH_PAGE_SIZE_BYTE           256u
+#elif FLASH_TYPE == FLASH_TYPE_M25P40
 /* Geometry of ST M25P40 */
 #define FLASH_BLOCK_NUM_ALL            8u      /**< Number of blocks in flash memory */
 #define FLASH_BLOCK_RESERVED_NUM       0u      /**< Index of first block to use by the file system */

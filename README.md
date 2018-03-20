@@ -15,18 +15,18 @@ pull-up resistor on USB's D+ line.
 Hardware
 ========
 Following wires should connect to the iCE40HX1K-EVB:
-CDONE       PA2 (not used yet)
-CRESET      PA3	
-SPI\_CS     PA4
-SPI1\_MISO	PA6
-SPI1\_MOSI	PA7
-SPI1\_SCK	PA5
+ * CDONE      -> PA2 (not used yet)
+ * CRESET     -> PA3	
+ * SPI\_CS    -> PA4
+ * SPI1\_MISO -> PA6
+ * SPI1\_MOSI -> PA7
+ * SPI1\_SCK  -> PA5
 
 Following wires should connect to the NOR flash:
-SPI\_CS     PA4
-SPI1\_MISO	PA6
-SPI1\_MOSI	PA7
-SPI1\_SCK	PA5
+* SPI\_CS     -> PA4
+* SPI1\_MISO  -> PA6
+* SPI1\_MOSI  -> PA7
+* SPI1\_SCK   -> PA5
 /WP and /HOLD pins should be pulled to VCC on the NOR flash.
 
 Connect a USB-to-serial converter if you want to see debug prints or

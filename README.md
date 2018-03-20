@@ -27,7 +27,9 @@ Following wires should connect to the NOR flash:
 * SPI1\_MISO  -> PA6
 * SPI1\_MOSI  -> PA7
 * SPI1\_SCK   -> PA5
-/WP and /HOLD pins should be pulled to VCC on the NOR flash.
+
+/WP and /HOLD pins should be pulled to VCC on the NOR flash (I used 33 kOhm,
+but anything between 4.7 kOhm and 47 kOhm is sufficient).
 
 Connect a USB-to-serial converter if you want to see debug prints or
 program MCU through UART interface:

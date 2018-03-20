@@ -62,6 +62,36 @@ Wrote address 0x0800d7a8 (100.00%) Done.
 
 Restore BOOT0 jumper to 0 and reset the board.
 
+Download FPGA configuration
+===========================
+Command to run:
+dfu-util -s 0 -D example.bin
+
+Example output:
+dfu-util 0.9
+
+Copyright 2005-2009 Weston Schmidt, Harald Welte and OpenMoko Inc.
+Copyright 2010-2016 Tormod Volden and Stefan Schmidt
+This program is Free Software and has ABSOLUTELY NO WARRANTY
+Please report bugs to http://sourceforge.net/p/dfu-util/tickets/
+
+dfu-util: Invalid DFU suffix signature
+dfu-util: A valid DFU suffix will be required in a future dfu-util release!!!
+Opening DFU capable USB device...
+ID 0483:df11
+Run-time device DFU version 011a
+Claiming USB DFU Interface...
+Setting Alternate Setting #0 ...
+Determining device status: state = dfuIDLE, status = 0
+dfuIDLE, continuing
+DFU mode device DFU version 011a
+Device returned transfer size 4096
+DfuSe interface name: "SPI Flash (ID 0xEF4015, Size: 2097152 bytes)"
+Downloading to address = 0x00000000, size = 32220
+Download	[=========================] 100%        32220 bytes
+Download done.
+File downloaded successfully
+
 Compile & debug
 ===============
 Import spi\_flasher project into Atollic TrueSTUDIO for STM32 and hit the 

@@ -18,6 +18,7 @@ if [ "$1" != "" ]; then
         gvimdiff $DUMP1 $DUMP2
     else
         echo "TEST PASSED!"
+        rm $FNAME2
     fi
 else
     echo "Missing parameter!"

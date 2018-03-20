@@ -29,12 +29,39 @@ SPI1\_MOSI	PA7
 SPI1\_SCK	PA5
 /WP and /HOLD pins should be pulled to VCC on the NOR flash.
 
-Connect a USB-to-serial converter if you want to see debug prints:
+Connect a USB-to-serial converter if you want to see debug prints or
+program MCU through UART interface:
 USART1\_RX	PA10
 USART1\_TX	PA9
 
-Compile
-=======
+Programming STM32 via UART
+==========================
+Connect a USB-to-serial converter, set BOOT0 jumper to 1 and run stm32flash:
+stm32flash /dev/ttyUSB0 -w spi\_flasher.hex 
+
+You should see something like this:
+stm32flash 0.5
+
+http://stm32flash.sourceforge.net/
+
+Using Parser : Intel HEX
+Interface serial\_posix: 57600 8E1
+Version      : 0x22
+Option 1     : 0x00
+Option 2     : 0x00
+Device ID    : 0x0410 (STM32F10xxx Medium-density)
+- RAM        : 20KiB  (512b reserved by bootloader)
+- Flash      : 128KiB (size first sector: 4x1024)
+- Option RAM : 16b
+- System RAM : 2KiB
+Write to memory
+Erasing memory
+Wrote address 0x0800d7a8 (100.00%) Done.
+
+Restore BOOT0 jumper to 0 and reset the board.
+
+Compile & debug
+===============
 Import spi\_flasher project into Atollic TrueSTUDIO for STM32 and hit the 
 hammer.
 

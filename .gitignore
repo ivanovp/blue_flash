@@ -19,3 +19,7 @@ test.log
 RemoteSystemsTempFiles/
 .metadata
 Debug/
+*.bin
+*.bin.dump
+*.bin.upload
+*.bin.upload.dump

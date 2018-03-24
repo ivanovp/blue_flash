@@ -2,14 +2,18 @@ Blue Flash - SPI NOR flash programmer using Blue Pill
 =====================================================
 
 This NOR flash programmer was designed to write Olimex's iCE40HX1K-EVB 
-Lattice FPGA board equipped with Winbond W25Q16 NOR flash. It uses the so 
-called Blue Pill development board with STM32F103 MCU. The software can 
+Lattice FPGA board equipped with Winbond W25Q16 NOR flash, but I improved it and
+now the software can program almost any NOR flash with SFDP. It uses the so 
+called Blue Pill development board with STM32F103 MCU. The PCB can be bought 
+for less than 2 USD. The software can 
 automatically detect NOR flash's capacity.
+
 It is a USB device, and uses DFU protocol. You can use latest version of 
 dfu-util from the SVN repository (for Arch Linux users 
 https://aur.archlinux.org/packages/dfu-util-git/).
+
 If you want to debug the source code, please, remove resistor R10 and put
-a 1.5 kOhm between PB9 and PA12, this way the software can switch the
+a 1.5 kOhm between PB9 and PA12. This way the software can switch the
 pull-up resistor on USB's D+ line.
 
 Hardware

@@ -15,12 +15,12 @@ pull-up resistor on USB's D+ line.
 Hardware
 ========
 Following wires should connect to the iCE40HX1K-EVB:
- * CDONE      -> PA2 (not used yet)
- * CRESET     -> PA3	
- * SPI\_CS    -> PA4
- * SPI1\_MISO -> PA6
- * SPI1\_MOSI -> PA7
- * SPI1\_SCK  -> PA5
+* CDONE      -> PA2 (not used yet)
+* CRESET     -> PA3	
+* SPI\_CS    -> PA4
+* SPI1\_MISO -> PA6
+* SPI1\_MOSI -> PA7
+* SPI1\_SCK  -> PA5
 
 Following wires should connect to the NOR flash:
 * SPI\_CS     -> PA4
@@ -33,15 +33,18 @@ but anything between 4.7 kOhm and 47 kOhm is sufficient).
 
 Connect a USB-to-serial converter if you want to see debug prints or
 program MCU through UART interface:
-USART1\_RX	PA10
-USART1\_TX	PA9
+* USART1\_RX	PA10
+* USART1\_TX	PA9
 
 Programming STM32 via UART
 ==========================
 Connect a USB-to-serial converter, set BOOT0 jumper to 1 and run stm32flash:
+```
 stm32flash /dev/ttyUSB0 -w spi\_flasher.hex 
+```
 
 You should see something like this:
+```
 stm32flash 0.5
 
 http://stm32flash.sourceforge.net/
@@ -59,15 +62,19 @@ Device ID    : 0x0410 (STM32F10xxx Medium-density)
 Write to memory
 Erasing memory
 Wrote address 0x0800d7a8 (100.00%) Done.
+```
 
 Restore BOOT0 jumper to 0 and reset the board.
 
 Download FPGA configuration
 ===========================
 Command to run:
+```
 dfu-util -s 0 -D example.bin
+```
 
 Example output:
+```
 dfu-util 0.9
 
 Copyright 2005-2009 Weston Schmidt, Harald Welte and OpenMoko Inc.
@@ -91,6 +98,7 @@ Downloading to address = 0x00000000, size = 32220
 Download	[=========================] 100%        32220 bytes
 Download done.
 File downloaded successfully
+```
 
 Compile & debug
 ===============

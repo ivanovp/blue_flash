@@ -25,6 +25,7 @@
 
 #include <stdint.h>
 #include "flash_config.h"
+#include "common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -104,6 +105,13 @@ flash_status_t flash_write(flash_address_t a_address, const void * const a_buf, 
  * @return FLASH_SUCCESS if block was erased successfully.
  */
 flash_status_t flash_erase(flash_address_t a_address);
+
+/**
+ * @brief flash_erase Erase all blocks.
+ *
+ * @return FLASH_SUCCESS if chip was erased successfully.
+ */
+flash_status_t flash_erase_all(bool_t a_print_dots);
 
 /**
  * @brief flash_print_stat Called by the terminal to print information

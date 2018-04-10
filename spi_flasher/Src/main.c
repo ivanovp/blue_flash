@@ -61,6 +61,7 @@
 #include "common.h"
 #include "uart.h"
 #include "usbd_dfu_if.h"
+#include "flash.h"
 
 #define USE_LEAFLABS_MAPLE      0   /* 1: LeafLabs Maple, 0: Blue pill */
 #define DISABLE_WATCHDOG_MAGIC  0xDEADBEEF
@@ -473,6 +474,32 @@ void StartDefaultTask(void const * argument)
       if (osSemaphoreWait(creset_sem, 500) != osOK)
       {
           dfu_flash_deinit();
+      }
+      if (UART_getchar() == 'x')
+      {
+          uint8_t c = 0;
+          flash_status_t ret;
+          UART_printf("Erase the whole flash (y/n)? ");
+          c = UART_getchar();
+          if (c == 'y')
+          {
+              dfu_flash_init();
+              UART_printf("Erase chip");
+              ret = flash_erase_all(TRUE);
+              if (ret == FLASH_SUCCESS)
+              {
+                  UART_printf("Done.\r\n");
+              }
+              else
+              {
+                  UART_printf("Error %i!\r\n", ret);
+              }
+              dfu_flash_deinit();
+          }
+          else
+          {
+              UART_printf("Cancelled\r\n");
+          }
       }
   }
   /* USER CODE END 5 */ 

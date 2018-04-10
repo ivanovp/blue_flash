@@ -40,6 +40,8 @@
 #endif
 #define FLASH_TIMEOUT_MS            1000
 #define FLASH_WRITE_TIMEOUT_MS      5000
+#define FLASH_ERASE_TIMEOUT_MS      5000
+#define FLASH_CHIP_ERASE_TIMEOUT_MS 400000
 #define FLASH_DMA_TIMEOUT_MS        5
 
 #define FLASH_DEFAULT_ERASE_COMMAND 0xD8
@@ -56,6 +58,8 @@
 #define MS_TO_TICK(ms)              (ms * 1000 / osKernelSysTickFrequency)
 #define FLASH_TIMEOUT_TICK          MS_TO_TICK(FLASH_TIMEOUT_MS)
 #define FLASH_WRITE_TIMEOUT_TICK    MS_TO_TICK(FLASH_WRITE_TIMEOUT_MS)
+#define FLASH_ERASE_TIMEOUT_TICK    MS_TO_TICK(FLASH_ERASE_TIMEOUT_MS)
+#define FLASH_CHIP_ERASE_TIMEOUT_TICK MS_TO_TICK(FLASH_CHIP_ERASE_TIMEOUT_MS)
 
 #define SFDP_SIGNATURE      0x50444653   /* SFDP */
 #define SFDP_VERSION_MINOR  6
@@ -125,6 +129,7 @@ static uint8_t cmd_read_data[5]              = { 0x03 };
 static uint8_t cmd_page_program[5]           = { 0x02 };
 static const uint8_t cmd_write_enable[1]     = { 0x06 };
 static uint8_t cmd_read_sfdp[5]              = { 0x5A, 0, 0, 0, 0 }; /* 24-bit address + 8 dummy bits */
+static const uint8_t cmd_chip_erase[1]       = { 0xC7 };
 static uint8_t answer[3];
 static sector_t sector_types[4];
 static uint8_t enter_4byte_addressing_cfg = 0;
@@ -443,10 +448,12 @@ flash_status_t flash_write_enable(void)
  *
  * @return FLASH_SUCCESS if write or erase operation finished successfully.
  */
-flash_status_t flash_wait(void)
+flash_status_t flash_wait(uint32_t a_timeout, bool_t a_print_dots)
 {
     flash_status_t ret = FLASH_ERROR_FLASH_TIMEOUT;
-    uint32_t      tick_start;
+    uint32_t       tick_start;
+    uint32_t       delta_tick;
+    uint32_t       delta_tick_prev;
 
     tick_start = osKernelSysTick();
     do
@@ -463,7 +470,13 @@ flash_status_t flash_wait(void)
             }
         }
         SET_CS_HIGH();
-    } while (ret != FLASH_SUCCESS && (osKernelSysTick() - tick_start) < FLASH_WRITE_TIMEOUT_TICK);
+        delta_tick = osKernelSysTick() - tick_start;
+        if (a_print_dots && delta_tick != delta_tick_prev && ((delta_tick % 1000) == 0))
+        {
+            UART_putc('.');
+        }
+        delta_tick_prev = delta_tick;
+    } while (ret != FLASH_SUCCESS && delta_tick < a_timeout);
 
     return ret;
 }
@@ -491,6 +504,11 @@ flash_status_t flash_init(void)
 #endif
     {
         ret = FLASH_ERROR_FLASH_INIT;
+        SET_CS_HIGH();
+        /* Waste some time */
+        if (HAL_SPI_Transmit(spi, cmd_dummy, sizeof(cmd_dummy), FLASH_TIMEOUT_TICK) == HAL_OK)
+        {
+        }
         SET_CS_LOW();
         if (HAL_SPI_Transmit(spi, cmd_power_up, sizeof(cmd_power_up), FLASH_TIMEOUT_TICK) == HAL_OK)
         {
@@ -716,7 +734,7 @@ flash_status_t flash_write(flash_address_t a_address, const void * const a_buf, 
                 SET_CS_HIGH();
                 if (ret == FLASH_SUCCESS)
                 {
-                    ret = flash_wait();
+                    ret = flash_wait(FLASH_WRITE_TIMEOUT_TICK, FALSE);
                 }
             }
         }
@@ -766,7 +784,7 @@ flash_status_t flash_erase(flash_address_t a_address)
                 SET_CS_HIGH();
                 if (ret == FLASH_SUCCESS)
                 {
-                    ret = flash_wait();
+                    ret = flash_wait(FLASH_ERASE_TIMEOUT_TICK, FALSE);
                 }
             }
         }
@@ -774,6 +792,40 @@ flash_status_t flash_erase(flash_address_t a_address)
         {
             FLASH_ERROR_MSG("Trying to erase invalid flash address! 0x%X\r\n",
                             a_address);
+        }
+    }
+    else
+    {
+        FLASH_ERROR_MSG("Not initialized!\r\n");
+    }
+
+    return ret;
+}
+
+/**
+ * @brief flash_erase Erase all blocks.
+ *
+ * @return FLASH_SUCCESS if chip was erased successfully.
+ */
+flash_status_t flash_erase_all(bool_t a_print_dots)
+{
+    flash_status_t ret = FLASH_ERROR_FLASH_INIT;
+
+    if (flash_initialized)
+    {
+        ret = flash_write_enable();
+        if (ret == FLASH_SUCCESS)
+        {
+            SET_CS_LOW();
+            if (HAL_SPI_Transmit(spi, cmd_chip_erase, sizeof(cmd_chip_erase), FLASH_TIMEOUT_TICK) == HAL_OK)
+            {
+                ret = FLASH_SUCCESS;
+            }
+            SET_CS_HIGH();
+            if (ret == FLASH_SUCCESS)
+            {
+                ret = flash_wait(FLASH_CHIP_ERASE_TIMEOUT_TICK, a_print_dots);
+            }
         }
     }
     else

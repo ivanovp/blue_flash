@@ -224,14 +224,19 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                     {
                         flash_density_bytes = (dword + 1) >> 3;
                     }
+                    /* Calculate default block number in case of no sector types field */
+                    flash_block_num_all = flash_density_bytes / flash_block_size_byte;
                     FLASH_INFO2_MSG("Density: %i bytes\r\n", flash_density_bytes);
                 }
-                /* 3rd..7th DWORDS, fast read parameters, omitting */
-                for (i = 0; i < 5 && stat == HAL_OK; i++)
+                if (a_parameter_header->length_dw >= 7)
                 {
-                    stat = HAL_SPI_Receive(spi, (uint8_t*)&dword, sizeof(dword), FLASH_TIMEOUT_TICK);
+                    /* 3rd..7th DWORDS, fast read parameters, omitting */
+                    for (i = 0; i < 5 && stat == HAL_OK; i++)
+                    {
+                        stat = HAL_SPI_Receive(spi, (uint8_t*)&dword, sizeof(dword), FLASH_TIMEOUT_TICK);
+                    }
                 }
-                if (stat == HAL_OK)
+                if (a_parameter_header->length_dw >= 9 && stat == HAL_OK)
                 {
                     /* 8th..9th DWORD, sector types */
                     stat = HAL_SPI_Receive(spi, (uint8_t*)&sector_types, sizeof(sector_types), FLASH_TIMEOUT_TICK);
@@ -266,7 +271,8 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                         FLASH_INFO2_MSG("No sector types found!\r\n");
                     }
                 }
-                if (a_parameter_header->version_major == 1 && a_parameter_header->version_minor >= 5)
+                if (a_parameter_header->length_dw >= 15
+                        && a_parameter_header->version_major == 1 && a_parameter_header->version_minor >= 5)
                 {
                     /* 10th..15th DWORDS, omitting */
                     /* TODO 14th DWORD: Status Register Polling Device Busy */

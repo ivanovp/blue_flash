@@ -181,6 +181,7 @@ int main(void)
 
   srand(time(0));
   UART_printf_("\r\n\r\nBoard initialized\r\n");
+  UART_printf_("Internal flash memory of MCU: %u KiB\r\n", *((volatile uint16_t*)0x1FFFF7E0));
 #if DEBUG == 1
   UART_printf_("DEBUG\r\n");
 #else

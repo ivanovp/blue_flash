@@ -66,6 +66,9 @@
 #define SFDP_VERSION_MAJOR  1
 #define SFDP_MAX_NPH        6
 
+/* Over 128 MBit 4-byte addressing is needed! */
+#define SIZE_128MBIT        (16 * 1024 * 1024)
+
 typedef struct __attribute__((packed))
 {
     uint8_t                 id;
@@ -223,6 +226,11 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                     else
                     {
                         flash_density_bytes = (dword + 1) >> 3;
+                    }
+                    if (flash_density_bytes > SIZE_128MBIT)
+                    {
+                        /* Over 128 MBit, so four address bytes needed */
+                        flash_address_bytes = 4;
                     }
                     /* Calculate default block number in case of no sector types field */
                     flash_block_num_all = flash_density_bytes / flash_block_size_byte;
@@ -542,7 +550,7 @@ flash_status_t flash_init(void)
                     n += (answer[2] & 0xF);
                     flash_density_bytes = 64u << n;
                     FLASH_INFO2_MSG("Density: %i bytes\r\n", flash_density_bytes);
-                    if (flash_density_bytes > 16 *1024 *1024)
+                    if (flash_density_bytes > SIZE_128MBIT)
                     {
                         /* Over 128 MBit, so four address bytes needed */
                         flash_address_bytes = 4;

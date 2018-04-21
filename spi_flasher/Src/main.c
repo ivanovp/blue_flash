@@ -569,6 +569,13 @@ void StartDefaultTask(void const * argument)
   UART_printf("Connect USB device (enable 1.5k pull-up resistor on D+)\r\n");
   USB_enablePullup();
   dfu_flash_init();
+  {
+    uint32_t freq_hz;
+    uint32_t prescaler = get_spi_prescaler(hspi1.Init.BaudRatePrescaler);
+
+    freq_hz = HAL_RCC_GetPCLK2Freq() / prescaler;
+    UART_printf("Default SPI clock: %i kHz\r\n", freq_hz / 1000);
+  }
   dfu_flash_deinit();
   /* Infinite loop */
   for(;;)

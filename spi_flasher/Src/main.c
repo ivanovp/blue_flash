@@ -455,6 +455,108 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
     {
     }
 }
+
+uint32_t get_spi_prescaler(uint32_t a_prescaler_reg)
+{
+    uint32_t prescaler;
+
+//    UART_printf("prescaler reg: 0x%X\r\n", a_prescaler_reg);
+    switch (a_prescaler_reg)
+    {
+        case SPI_BAUDRATEPRESCALER_2:
+            prescaler = 2;
+            break;
+        case SPI_BAUDRATEPRESCALER_4:
+            prescaler = 4;
+            break;
+        case SPI_BAUDRATEPRESCALER_8:
+            prescaler = 8;
+            break;
+        case SPI_BAUDRATEPRESCALER_16:
+            prescaler = 16;
+            break;
+        case SPI_BAUDRATEPRESCALER_32:
+            prescaler = 16;
+            break;
+        case SPI_BAUDRATEPRESCALER_64:
+            prescaler = 64;
+            break;
+        case SPI_BAUDRATEPRESCALER_128:
+            prescaler = 128;
+            break;
+        case SPI_BAUDRATEPRESCALER_256:
+            prescaler = 256;
+            break;
+        default:
+            break;
+    }
+//    UART_printf("prescaler: %i\r\n", prescaler);
+
+    return prescaler;
+}
+
+uint32_t set_spi_prescaler(uint32_t a_prescaler)
+{
+    uint32_t prescaler_reg = 0;
+
+//    UART_printf("prescaler: %i\r\n", a_prescaler);
+    switch (a_prescaler)
+    {
+        case 2:
+            prescaler_reg = SPI_BAUDRATEPRESCALER_2;
+            break;
+        case 4:
+            prescaler_reg = SPI_BAUDRATEPRESCALER_4;
+            break;
+        case 8:
+            prescaler_reg = SPI_BAUDRATEPRESCALER_8;
+            break;
+        case 16:
+            prescaler_reg = SPI_BAUDRATEPRESCALER_16;
+            break;
+        case 32:
+            prescaler_reg = SPI_BAUDRATEPRESCALER_32;
+            break;
+        case 64:
+            prescaler_reg = SPI_BAUDRATEPRESCALER_64;
+            break;
+        case 128:
+            prescaler_reg = SPI_BAUDRATEPRESCALER_128;
+            break;
+        case 256:
+            prescaler_reg = SPI_BAUDRATEPRESCALER_256;
+            break;
+        default:
+            break;
+    }
+//    UART_printf("prescaler reg: 0x%X\r\n", prescaler_reg);
+
+    return prescaler_reg;
+}
+
+void set_spi_freq(bool_t a_increase)
+{
+    uint32_t freq_hz;
+    uint32_t prescaler = get_spi_prescaler(hspi1.Init.BaudRatePrescaler);
+
+    freq_hz = HAL_RCC_GetPCLK2Freq() / prescaler;
+    UART_printf("Change SPI clock from %i kHz to ", freq_hz / 1000);
+    if (a_increase == TRUE && prescaler > 2)
+    {
+        prescaler >>= 1;
+    }
+    if (a_increase == FALSE && prescaler < 256)
+    {
+        prescaler <<= 1;
+    }
+    freq_hz = HAL_RCC_GetPCLK2Freq() / prescaler;
+    UART_printf("%i kHz\r\n", freq_hz / 1000);
+    hspi1.Init.BaudRatePrescaler = set_spi_prescaler(prescaler);
+    if (HAL_SPI_Init(&hspi1) != HAL_OK)
+    {
+        _Error_Handler(__FILE__, __LINE__);
+    }
+}
 /* USER CODE END 4 */
 
 /* StartDefaultTask function */
@@ -471,15 +573,26 @@ void StartDefaultTask(void const * argument)
   /* Infinite loop */
   for(;;)
   {
+      char c;
+
       /* After 500 milliseconds, release CRESET automatically to let the FPGA run */
       if (osSemaphoreWait(creset_sem, 500) != osOK)
       {
           dfu_flash_deinit();
       }
-      if (UART_getchar() == 'x')
+      c = UART_getchar();
+      if (c == '+')
       {
-          uint8_t c = 0;
+          set_spi_freq(TRUE);
+      }
+      if (c == '-')
+      {
+          set_spi_freq(FALSE);
+      }
+      if (c == 'x')
+      {
           flash_status_t ret;
+
           UART_printf("Erase the whole flash (y/n)? ");
           c = UART_getchar();
           if (c == 'y')

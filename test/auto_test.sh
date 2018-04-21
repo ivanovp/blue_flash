@@ -18,9 +18,9 @@ diff $FNAME $FNAME2
 rc=$?; 
 if [[ $rc != 0 ]]; then 
     echo "TEST FAILED!"
-    xxd $FNAME >$DUMP1
-    xxd $FNAME2 >$DUMP2
-    gvimdiff $DUMP1 $DUMP2
+#    xxd $FNAME >$DUMP1
+#    xxd $FNAME2 >$DUMP2
+#    gvimdiff $DUMP1 $DUMP2
 else
     echo "TEST PASSED!"
     rm $FNAME2

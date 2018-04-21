@@ -120,6 +120,13 @@ extern SPI_HandleTypeDef hspi1;
         UART_printf("%s:%i ERROR: ", __FUNCTION__, __LINE__); \
         UART_printf(__VA_ARGS__); \
     } while (0);
+#define DFU_INFO_MSG_ISR(...)    do { \
+        UART_printf_(__VA_ARGS__); \
+    } while (0);
+#define DFU_ERROR_MSG_ISR(...)    do { \
+        UART_printf_("%s:%i ERROR: ", __FUNCTION__, __LINE__); \
+        UART_printf_(__VA_ARGS__); \
+    } while (0);
 /* USER CODE END PRIVATE_DEFINES */
 
 /**
@@ -243,15 +250,16 @@ uint16_t MEM_If_Erase_FS(uint32_t Add)
     {
         osSemaphoreRelease(creset_sem);
 
+        //DFU_INFO_MSG_ISR("Erase @0x%08Xi... ", Add);
         fl_ret = flash_erase(Add);
         if (fl_ret == FLASH_SUCCESS)
         {
-            DFU_DEBUG_MSG("Erased 0x%08Xi\r\n", addr);
+            //DFU_INFO_MSG_ISR("Done.\r\n");
             ret = USBD_OK;
         }
         else
         {
-            DFU_ERROR_MSG("Cannot erase block! Status: %i\r\n", fl_ret);
+            //DFU_ERROR_MSG_ISR("Cannot erase block! Status: %i\r\n", fl_ret);
         }
     }
 

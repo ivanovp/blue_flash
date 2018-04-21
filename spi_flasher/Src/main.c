@@ -604,6 +604,7 @@ void StartDefaultTask(void const * argument)
           c = UART_getchar();
           if (c == 'y')
           {
+              UART_printf("Yes.\r\n");
               dfu_flash_init();
               UART_printf("Erase chip");
               ret = flash_erase_all(TRUE);
@@ -619,7 +620,7 @@ void StartDefaultTask(void const * argument)
           }
           else
           {
-              UART_printf("Cancelled\r\n");
+              UART_printf("No. Erase cancelled.\r\n");
           }
       }
   }

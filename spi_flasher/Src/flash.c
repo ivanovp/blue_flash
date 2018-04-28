@@ -69,6 +69,12 @@
 /* Over 128 MBit 4-byte addressing is needed! */
 #define SIZE_128MBIT        (16 * 1024 * 1024)
 
+#define ENTER_4BYTE_WITH_B7()               (enter_4byte_addressing_cfg & (1u << 0))
+#define ENTER_4BYTE_WITH_06_B7()            (enter_4byte_addressing_cfg & (1u << 1))
+#define EXTENDED_ADDRESS_REG_31_24_BITS()   (enter_4byte_addressing_cfg & (1u << 2))
+#define EXTENDED_ADDRESS_REG_30_24_BITS()   (enter_4byte_addressing_cfg & (1u << 3))
+#define ALWAYS_OPERATES_IN_4BYTE_MODE()     (enter_4byte_addressing_cfg & (1u << 6))
+
 typedef struct __attribute__((packed))
 {
     uint8_t                 id;
@@ -293,6 +299,26 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                     {
                         enter_4byte_addressing_cfg = dword >> 24;
                         FLASH_INFO2_MSG("Enter 4-byte addressing: 0x%02X\r\n", enter_4byte_addressing_cfg);
+                        if (ENTER_4BYTE_WITH_B7())
+                        {
+                            FLASH_INFO2_MSG("Enter 4-byte with command 0xB7\r\n");
+                        }
+                        if (ENTER_4BYTE_WITH_06_B7())
+                        {
+                            FLASH_INFO2_MSG("Enter 4-byte with command 0x06 and 0xB7\r\n");
+                        }
+                        if (EXTENDED_ADDRESS_REG_31_24_BITS())
+                        {
+                            FLASH_INFO2_MSG("8-bit volatile extended address register used to define A[31:24] bits\r\n");
+                        }
+                        if (EXTENDED_ADDRESS_REG_30_24_BITS())
+                        {
+                            FLASH_INFO2_MSG("8-bit volatile extended address register used to define A[30:24] bits\r\n");
+                        }
+                        if (ALWAYS_OPERATES_IN_4BYTE_MODE())
+                        {
+                            FLASH_INFO2_MSG("Always operates in 4-byte address mode\r\n");
+                        }
                     }
                 }
                 SET_CS_HIGH();
@@ -495,6 +521,24 @@ flash_status_t flash_wait(uint32_t a_timeout, bool_t a_print_dots)
     return ret;
 }
 
+flash_status_t flash_cmd(uint8_t * a_cmd, uint32_t a_cmd_length)
+{
+    flash_status_t ret;
+
+    SET_CS_LOW();
+    if (HAL_SPI_Transmit(spi, a_cmd, a_cmd_length, FLASH_TIMEOUT_TICK) == HAL_OK)
+    {
+        ret = FLASH_SUCCESS;
+    }
+    else
+    {
+        ret = FLASH_ERROR_GENERAL;
+    }
+    SET_CS_HIGH();
+
+    return ret;
+}
+
 /**
  * @brief flash_init Initialize flash driver.
  *
@@ -523,11 +567,7 @@ flash_status_t flash_init(void)
         if (HAL_SPI_Transmit(spi, cmd_dummy, sizeof(cmd_dummy), FLASH_TIMEOUT_TICK) == HAL_OK)
         {
         }
-        SET_CS_LOW();
-        if (HAL_SPI_Transmit(spi, cmd_power_up, sizeof(cmd_power_up), FLASH_TIMEOUT_TICK) == HAL_OK)
-        {
-        }
-        SET_CS_HIGH();
+        ret = flash_cmd(cmd_power_up, sizeof(cmd_power_up));
         /* Waste some time */
         if (HAL_SPI_Transmit(spi, cmd_dummy, sizeof(cmd_dummy), FLASH_TIMEOUT_TICK) == HAL_OK)
         {
@@ -605,16 +645,14 @@ flash_status_t flash_init(void)
 
         if (ret == FLASH_SUCCESS && flash_address_bytes == 4)
         {
-            SET_CS_LOW();
-            if (HAL_SPI_Transmit(spi, cmd_enter_4byte_mode, sizeof(cmd_enter_4byte_mode), FLASH_TIMEOUT_TICK) == HAL_OK)
+            if (ENTER_4BYTE_WITH_06_B7())
             {
-                ret = FLASH_SUCCESS;
+                ret = flash_cmd(cmd_write_enable, sizeof(cmd_write_enable));
             }
-            else
+            if (ret == FLASH_SUCCESS)
             {
-                ret = FLASH_ERROR_FLASH_INIT;
+                ret = flash_cmd(cmd_enter_4byte_mode, sizeof(cmd_enter_4byte_mode));
             }
-            SET_CS_HIGH();
         }
     }
 
@@ -634,13 +672,8 @@ flash_status_t flash_delete(void)
     if (osSemaphoreDelete(dma_finished) == osOK)
 #endif
     {
-        SET_CS_LOW();
-        if (HAL_SPI_Transmit(spi, cmd_power_down, sizeof(cmd_power_down), FLASH_TIMEOUT_TICK) == HAL_OK)
-        {
-        }
-        SET_CS_HIGH();
+        ret = flash_cmd(cmd_power_down, sizeof(cmd_power_down));
         flash_initialized = FALSE;
-        ret = FLASH_SUCCESS;
     }
 
     return ret;
@@ -726,6 +759,7 @@ flash_status_t flash_write(flash_address_t a_address, const void * const a_buf, 
             ret = flash_write_enable();
             if (ret == FLASH_SUCCESS)
             {
+                ret = FLASH_ERROR_FLASH_WRITE;
                 SET_CS_LOW();
                 flash_write_address(&cmd_page_program[1], a_address);
                 if (HAL_SPI_Transmit(spi, cmd_page_program, flash_address_bytes + 1, FLASH_TIMEOUT_TICK) == HAL_OK)
@@ -795,6 +829,10 @@ flash_status_t flash_erase(flash_address_t a_address)
                 {
                     ret = FLASH_SUCCESS;
                 }
+                else
+                {
+                    ret = FLASH_ERROR_FLASH_ERASE;
+                }
                 SET_CS_HIGH();
                 if (ret == FLASH_SUCCESS)
                 {
@@ -830,16 +868,11 @@ flash_status_t flash_erase_all(bool_t a_print_dots)
         ret = flash_write_enable();
         if (ret == FLASH_SUCCESS)
         {
-            SET_CS_LOW();
-            if (HAL_SPI_Transmit(spi, cmd_chip_erase, sizeof(cmd_chip_erase), FLASH_TIMEOUT_TICK) == HAL_OK)
-            {
-                ret = FLASH_SUCCESS;
-            }
-            SET_CS_HIGH();
-            if (ret == FLASH_SUCCESS)
-            {
-                ret = flash_wait(FLASH_CHIP_ERASE_TIMEOUT_TICK, a_print_dots);
-            }
+            ret = flash_cmd(cmd_chip_erase, sizeof(cmd_chip_erase));
+        }
+        if (ret == FLASH_SUCCESS)
+        {
+            ret = flash_wait(FLASH_CHIP_ERASE_TIMEOUT_TICK, a_print_dots);
         }
     }
     else

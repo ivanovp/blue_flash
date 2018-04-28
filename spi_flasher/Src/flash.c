@@ -142,6 +142,7 @@ static const uint8_t cmd_chip_erase[1]       = { 0xC7 };
 static uint8_t answer[3];
 static sector_t sector_types[4];
 static uint8_t enter_4byte_addressing_cfg = 0;
+static uint32_t four_byte_instr_table[2] = { 0 };
 #if FLASH_ENABLE_DMA
 static osSemaphoreId dma_finished;
 osSemaphoreDef(dma_finished);
@@ -160,6 +161,7 @@ static uint32_t flash_block_num_all = 0;
 static uint32_t flash_block_size_byte = FLASH_DEFAULT_BLOCK_SIZE;
 static uint32_t flash_density_bytes = 0;
 static uint8_t flash_address_bytes = 3;
+static uint8_t flash_sector_type = 0;
 #endif
 
 flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter_header)
@@ -267,6 +269,7 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                             {
                                 max_sector_size_byte = sector_size_byte;
                                 sector_erase_opcode = sector_types[i].sector_erase_opcode;
+                                flash_sector_type = i + 1;
                                 ret = FLASH_SUCCESS;
                             }
                         }
@@ -276,7 +279,8 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                         flash_block_size_byte = max_sector_size_byte;
                         flash_block_num_all = flash_density_bytes / flash_block_size_byte;
                         cmd_erase[0] = sector_erase_opcode;
-                        FLASH_INFO2_MSG("Selected sector size: %i bytes, erase opcode: 0x%02X\r\n",
+                        FLASH_INFO2_MSG("Selected sector type: %i, size: %i bytes, erase opcode: 0x%02X\r\n",
+                                        flash_sector_type,
                                         max_sector_size_byte,
                                         sector_erase_opcode);
                     }
@@ -342,19 +346,63 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
             if (HAL_SPI_Transmit(spi, cmd_read_sfdp, sizeof(cmd_read_sfdp), FLASH_TIMEOUT_TICK) == HAL_OK)
             {
                 /* 1st DWORD */
-                stat = HAL_SPI_Receive(spi, (uint8_t*)&dword, sizeof(dword), FLASH_TIMEOUT_TICK);
+                stat = HAL_SPI_Receive(spi, (uint8_t*)&four_byte_instr_table[0], sizeof(four_byte_instr_table[0]), FLASH_TIMEOUT_TICK);
                 if (stat == HAL_OK)
                 {
-                    FLASH_INFO2_MSG("1st DWORD: 0x%08X\r\n", dword);
+                    FLASH_INFO2_MSG("1st DWORD: 0x%08X\r\n", four_byte_instr_table[0]);
                 }
                 if (stat == HAL_OK)
                 {
                     /* 2nd DWORD */
-                    stat = HAL_SPI_Receive(spi, (uint8_t*)&dword, sizeof(dword), FLASH_TIMEOUT_TICK);
+                    stat = HAL_SPI_Receive(spi, (uint8_t*)&four_byte_instr_table[1], sizeof(four_byte_instr_table[1]), FLASH_TIMEOUT_TICK);
                 }
                 if (stat == HAL_OK)
                 {
-                    FLASH_INFO2_MSG("2nd DWORD: 0x%08X\r\n", dword);
+                    FLASH_INFO2_MSG("2nd DWORD: 0x%08X\r\n", four_byte_instr_table[1]);
+                    if (four_byte_instr_table[0] & (1u << 12))
+                    {
+                        FLASH_INFO2_MSG("Support for Erase Command 0x%02X - Type 4 size\r\n",
+                                        (uint8_t)(four_byte_instr_table[1] >> 24));
+                        if (flash_sector_type == 4
+                                && flash_address_bytes == 4)
+                        {
+                            cmd_erase[0] = four_byte_instr_table[1] >> 24;
+                            FLASH_INFO2_MSG("Changing erase command to %02X\r\n", cmd_erase[0]);
+                        }
+                    }
+                    if (four_byte_instr_table[0] & (1u << 11))
+                    {
+                        FLASH_INFO2_MSG("Support for Erase Command 0x%02X - Type 3 size\r\n",
+                                        (uint8_t)(four_byte_instr_table[1] >> 16));
+                        if (flash_sector_type == 3
+                                && flash_address_bytes == 4)
+                        {
+                            cmd_erase[0] = four_byte_instr_table[1] >> 16;
+                            FLASH_INFO2_MSG("Changing erase command to %02X\r\n", cmd_erase[0]);
+                        }
+                    }
+                    if (four_byte_instr_table[0] & (1u << 10))
+                    {
+                        FLASH_INFO2_MSG("Support for Erase Command 0x%02X - Type 2 size\r\n",
+                                        (uint8_t)(four_byte_instr_table[1] >> 8));
+                        if (flash_sector_type == 2
+                                && flash_address_bytes == 4)
+                        {
+                            cmd_erase[0] = four_byte_instr_table[1] >> 8;
+                            FLASH_INFO2_MSG("Changing erase command to %02X\r\n", cmd_erase[0]);
+                        }
+                    }
+                    if (four_byte_instr_table[0] & (1u << 9))
+                    {
+                        FLASH_INFO2_MSG("Support for Erase Command 0x%02X - Type 1 size\r\n",
+                                        (uint8_t)(four_byte_instr_table[1]));
+                        if (flash_sector_type == 1
+                                && flash_address_bytes == 4)
+                        {
+                            cmd_erase[0] = four_byte_instr_table[1] >> 24;
+                            FLASH_INFO2_MSG("Changing erase command to %02X\r\n", cmd_erase[0]);
+                        }
+                    }
                 }
             }
         }

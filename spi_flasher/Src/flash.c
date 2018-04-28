@@ -142,7 +142,6 @@ static const uint8_t cmd_chip_erase[1]       = { 0xC7 };
 static uint8_t answer[3];
 static sector_t sector_types[4];
 static uint8_t enter_4byte_addressing_cfg = 0;
-static uint32_t four_byte_instr_table[2] = { 0 };
 #if FLASH_ENABLE_DMA
 static osSemaphoreId dma_finished;
 osSemaphoreDef(dma_finished);
@@ -174,6 +173,7 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
     uint32_t          sector_size_byte = 0;
     uint8_t           sector_erase_opcode = 0;
     uint8_t           i;
+    uint32_t          four_byte_instr_table[2] = { 0 };
 
     FLASH_INFO2_MSG("ID MSB: 0x%02X\r\n", a_parameter_header->id_msb);
     FLASH_INFO2_MSG("ID LSB: 0x%02X\r\n", a_parameter_header->id);
@@ -302,7 +302,7 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                     if (stat == HAL_OK)
                     {
                         enter_4byte_addressing_cfg = dword >> 24;
-                        FLASH_INFO2_MSG("Enter 4-byte addressing: 0x%02X\r\n", enter_4byte_addressing_cfg);
+                        FLASH_INFO2_MSG("Enter 4-byte addressing configuration: 0x%02X\r\n", enter_4byte_addressing_cfg);
                         if (ENTER_4BYTE_WITH_B7())
                         {
                             FLASH_INFO2_MSG("Enter 4-byte with command 0xB7\r\n");

@@ -61,13 +61,18 @@
 #define FLASH_ERASE_TIMEOUT_TICK    MS_TO_TICK(FLASH_ERASE_TIMEOUT_MS)
 #define FLASH_CHIP_ERASE_TIMEOUT_TICK MS_TO_TICK(FLASH_CHIP_ERASE_TIMEOUT_MS)
 
-#define SFDP_SIGNATURE      0x50444653   /* SFDP */
-#define SFDP_VERSION_MINOR  6
-#define SFDP_VERSION_MAJOR  1
-#define SFDP_MAX_NPH        6
+#define SFDP_SIGNATURE              0x50444653   /* SFDP */
+#define SFDP_VERSION_MINOR          6
+#define SFDP_VERSION_MAJOR          1
+/* Number of maximum parameter headers in the SFDP.
+ * 6 seems to be enough for most NOR ICs */
+#define SFDP_MAX_NPH                6
+#define SFDP_ID_MSB                 0xFF        /* Most significant byte of SFDP ID */
+#define SFDP_BASIC_SPI_PROT_ID_LSB  0x00        /* Basic SFDP header. Least significant byte of ID */
+#define SFDP_4B_ADDR_ID_LSB         0x84        /* 4-byte address instruction table. Least significant byte of ID */
 
 /* Over 128 MBit 4-byte addressing is needed! */
-#define SIZE_128MBIT        (16 * 1024 * 1024)
+#define SIZE_128MBIT                (16 * 1024 * 1024)
 
 #define ENTER_4BYTE_WITH_B7()               (enter_4byte_addressing_cfg & (1u << 0))
 #define ENTER_4BYTE_WITH_06_B7()            (enter_4byte_addressing_cfg & (1u << 1))
@@ -167,19 +172,19 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
 {
     flash_status_t    ret = FLASH_ERROR_GENERAL;
     uint32_t          dword;
+    uint32_t          dword2;
     HAL_StatusTypeDef stat;
     uint8_t           addr_bytes;
     uint32_t          max_sector_size_byte = 0;
     uint32_t          sector_size_byte = 0;
     uint8_t           sector_erase_opcode = 0;
     uint8_t           i;
-    uint32_t          four_byte_instr_table[2] = { 0 };
 
     FLASH_INFO2_MSG("ID MSB: 0x%02X\r\n", a_parameter_header->id_msb);
     FLASH_INFO2_MSG("ID LSB: 0x%02X\r\n", a_parameter_header->id);
-    if (a_parameter_header->id_msb == 0xFF)
+    if (a_parameter_header->id_msb == SFDP_ID_MSB)
     {
-        if (a_parameter_header->id == 0)
+        if (a_parameter_header->id == SFDP_BASIC_SPI_PROT_ID_LSB)
         {
             /* 0xFF00: Basic SPI protocol */
             FLASH_INFO2_MSG("Type: Basic SPI protocol\r\n");
@@ -244,6 +249,7 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                     flash_block_num_all = flash_density_bytes / flash_block_size_byte;
                     FLASH_INFO2_MSG("Density: %i bytes\r\n", flash_density_bytes);
                 }
+                /* Check if there are enough bytes in the header */
                 if (a_parameter_header->length_dw >= 7)
                 {
                     /* 3rd..7th DWORDS, fast read parameters, omitting */
@@ -252,6 +258,7 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                         stat = HAL_SPI_Receive(spi, (uint8_t*)&dword, sizeof(dword), FLASH_TIMEOUT_TICK);
                     }
                 }
+                /* Check if there are enough bytes in the header */
                 if (a_parameter_header->length_dw >= 9 && stat == HAL_OK)
                 {
                     /* 8th..9th DWORD, sector types */
@@ -261,7 +268,8 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                         if (sector_types[i].sector_size > 0)
                         {
                             sector_size_byte = (1u << sector_types[i].sector_size);
-                            FLASH_INFO2_MSG("Sector size: %i bytes, erase opcode: 0x%02X\r\n",
+                            FLASH_INFO2_MSG("Sector type %i, size: %i bytes, erase opcode: 0x%02X\r\n",
+                                            i + 1,
                                             sector_size_byte,
                                             sector_types[i].sector_erase_opcode);
                             if ((sector_size_byte > max_sector_size_byte)
@@ -289,6 +297,8 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                         FLASH_INFO2_MSG("No sector types found!\r\n");
                     }
                 }
+                /* Check if there are enough bytes in the header and
+                 * SFDP version is 1.5 */
                 if (a_parameter_header->length_dw >= 15
                         && a_parameter_header->version_major == 1 && a_parameter_header->version_minor >= 5)
                 {
@@ -302,7 +312,7 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                     if (stat == HAL_OK)
                     {
                         enter_4byte_addressing_cfg = dword >> 24;
-                        FLASH_INFO2_MSG("Enter 4-byte addressing configuration: 0x%02X\r\n", enter_4byte_addressing_cfg);
+                        //FLASH_INFO2_MSG("Enter 4-byte addressing configuration: 0x%02X\r\n", enter_4byte_addressing_cfg);
                         if (ENTER_4BYTE_WITH_B7())
                         {
                             FLASH_INFO2_MSG("Enter 4-byte with command 0xB7\r\n");
@@ -328,7 +338,7 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
                 SET_CS_HIGH();
             }
         }
-        else if (a_parameter_header->id == 0x84)
+        else if (a_parameter_header->id == SFDP_4B_ADDR_ID_LSB)
         {
             /* 0xFF84: 4-byte Address Instruction Table */
             FLASH_INFO2_MSG("Type: 4-byte address instruction table\r\n");
@@ -346,60 +356,65 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
             if (HAL_SPI_Transmit(spi, cmd_read_sfdp, sizeof(cmd_read_sfdp), FLASH_TIMEOUT_TICK) == HAL_OK)
             {
                 /* 1st DWORD */
-                stat = HAL_SPI_Receive(spi, (uint8_t*)&four_byte_instr_table[0], sizeof(four_byte_instr_table[0]), FLASH_TIMEOUT_TICK);
+                stat = HAL_SPI_Receive(spi, (uint8_t*)&dword, sizeof(dword), FLASH_TIMEOUT_TICK);
                 if (stat == HAL_OK)
                 {
-                    FLASH_INFO2_MSG("1st DWORD: 0x%08X\r\n", four_byte_instr_table[0]);
-                }
-                if (stat == HAL_OK)
-                {
+                    //FLASH_INFO2_MSG("1st DWORD: 0x%08X\r\n", dword);
                     /* 2nd DWORD */
-                    stat = HAL_SPI_Receive(spi, (uint8_t*)&four_byte_instr_table[1], sizeof(four_byte_instr_table[1]), FLASH_TIMEOUT_TICK);
+                    stat = HAL_SPI_Receive(spi, (uint8_t*)&dword2, sizeof(dword2), FLASH_TIMEOUT_TICK);
                 }
                 if (stat == HAL_OK)
                 {
-                    FLASH_INFO2_MSG("2nd DWORD: 0x%08X\r\n", four_byte_instr_table[1]);
-                    if (four_byte_instr_table[0] & (1u << 12))
+                    //FLASH_INFO2_MSG("2nd DWORD: 0x%08X\r\n", dword2);
+                    if (dword & (1u << 9))
                     {
-                        FLASH_INFO2_MSG("Support for Erase Command 0x%02X - Type 4 size\r\n",
-                                        (uint8_t)(four_byte_instr_table[1] >> 24));
-                        if (flash_sector_type == 4
-                                && flash_address_bytes == 4)
-                        {
-                            cmd_erase[0] = four_byte_instr_table[1] >> 24;
-                            FLASH_INFO2_MSG("Changing erase command to %02X\r\n", cmd_erase[0]);
-                        }
-                    }
-                    if (four_byte_instr_table[0] & (1u << 11))
-                    {
-                        FLASH_INFO2_MSG("Support for Erase Command 0x%02X - Type 3 size\r\n",
-                                        (uint8_t)(four_byte_instr_table[1] >> 16));
-                        if (flash_sector_type == 3
-                                && flash_address_bytes == 4)
-                        {
-                            cmd_erase[0] = four_byte_instr_table[1] >> 16;
-                            FLASH_INFO2_MSG("Changing erase command to %02X\r\n", cmd_erase[0]);
-                        }
-                    }
-                    if (four_byte_instr_table[0] & (1u << 10))
-                    {
-                        FLASH_INFO2_MSG("Support for Erase Command 0x%02X - Type 2 size\r\n",
-                                        (uint8_t)(four_byte_instr_table[1] >> 8));
-                        if (flash_sector_type == 2
-                                && flash_address_bytes == 4)
-                        {
-                            cmd_erase[0] = four_byte_instr_table[1] >> 8;
-                            FLASH_INFO2_MSG("Changing erase command to %02X\r\n", cmd_erase[0]);
-                        }
-                    }
-                    if (four_byte_instr_table[0] & (1u << 9))
-                    {
-                        FLASH_INFO2_MSG("Support for Erase Command 0x%02X - Type 1 size\r\n",
-                                        (uint8_t)(four_byte_instr_table[1]));
+                        FLASH_INFO2_MSG("Erase command for sector type 1: 0x%02X\r\n",
+                                        (uint8_t)(dword2));
                         if (flash_sector_type == 1
                                 && flash_address_bytes == 4)
                         {
-                            cmd_erase[0] = four_byte_instr_table[1] >> 24;
+                            /* Replace erase command if 4-byte addressing is needed
+                             * and this sector type is used. */
+                            cmd_erase[0] = dword2 >> 24;
+                            FLASH_INFO2_MSG("Changing erase command to %02X\r\n", cmd_erase[0]);
+                        }
+                    }
+                    if (dword & (1u << 10))
+                    {
+                        FLASH_INFO2_MSG("Erase command for sector type 2: 0x%02X\r\n",
+                                        (uint8_t)(dword2 >> 8));
+                        if (flash_sector_type == 2
+                                && flash_address_bytes == 4)
+                        {
+                            /* Replace erase command if 4-byte addressing is needed
+                             * and this sector type is used. */
+                            cmd_erase[0] = dword2 >> 8;
+                            FLASH_INFO2_MSG("Changing erase command to %02X\r\n", cmd_erase[0]);
+                        }
+                    }
+                    if (dword & (1u << 11))
+                    {
+                        FLASH_INFO2_MSG("Erase command for sector type 3: 0x%02X\r\n",
+                                        (uint8_t)(dword2 >> 16));
+                        if (flash_sector_type == 3
+                                && flash_address_bytes == 4)
+                        {
+                            /* Replace erase command if 4-byte addressing is needed
+                             * and this sector type is used. */
+                            cmd_erase[0] = dword2 >> 16;
+                            FLASH_INFO2_MSG("Changing erase command to %02X\r\n", cmd_erase[0]);
+                        }
+                    }
+                    if (dword & (1u << 12))
+                    {
+                        FLASH_INFO2_MSG("Erase command for sector type 4: 0x%02X\r\n",
+                                        (uint8_t)(dword2 >> 24));
+                        if (flash_sector_type == 4
+                                && flash_address_bytes == 4)
+                        {
+                            /* Replace erase command if 4-byte addressing is needed
+                             * and this sector type is used. */
+                            cmd_erase[0] = dword2 >> 24;
                             FLASH_INFO2_MSG("Changing erase command to %02X\r\n", cmd_erase[0]);
                         }
                     }

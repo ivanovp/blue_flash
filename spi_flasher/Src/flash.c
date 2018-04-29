@@ -168,7 +168,14 @@ static uint8_t flash_address_bytes = 3;
 static uint8_t flash_sector_type = 0;
 #endif
 
-flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter_header)
+/**
+ * @brief flash_read_parameter_table Read parameter table described in parameter
+ * header.
+ * @param[in] a_parameter_header    Parameter header to process.
+ * @return FLASH_SUCCESS if parameter header and table was successfully
+ * processed or parameter table was omitted.
+ */
+flash_status_t flash_read_parameter_table(sfdp_parameter_header_t * a_parameter_header)
 {
     flash_status_t    ret = FLASH_ERROR_GENERAL;
     uint32_t          dword;
@@ -437,6 +444,12 @@ flash_status_t flash_read_parameter_header(sfdp_parameter_header_t * a_parameter
     return ret;
 }
 
+/**
+ * @brief flash_read_sfdp Read Serial Flash Discoverable Parameters (SFDP) from
+ * flash memory.
+ * @return FLASH_SUCCESS If SFDP found and successfully processed.
+ * FLASH_ERROR_FLASH_GENERAL If no SFDP found or error occurred during process.
+ */
 flash_status_t flash_read_sfdp(void)
 {
     flash_status_t ret = FLASH_ERROR_GENERAL;
@@ -465,9 +478,9 @@ flash_status_t flash_read_sfdp(void)
                     FLASH_INFO2_MSG("Number of parameter headers: %i\r\n", sfdp_header.nph + 1);
                     for (i = 0; i <= sfdp_header.nph && i < SFDP_MAX_NPH; i++)
                     {
-                        FLASH_INFO2_MSG("#%i parameter header\r\n", i);
-                        FLASH_INFO2_MSG("--------------------\r\n");
-                        ret = flash_read_parameter_header(&(sfdp_header.parameter_header[i]));
+                        FLASH_INFO2_MSG("#%i parameter table\r\n", i);
+                        FLASH_INFO2_MSG("-------------------\r\n");
+                        ret = flash_read_parameter_table(&(sfdp_header.parameter_header[i]));
                     }
                 }
                 else

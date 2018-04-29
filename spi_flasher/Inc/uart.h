@@ -30,6 +30,7 @@ extern void UART_putc(const char ch);
 extern void UART_printf_(const char * fmt, ...);
 extern void UART_printf(const char * fmt, ...);
 extern uint8_t UART_getchar(void);
+extern uint8_t UART_getcharNB(void);
 extern size_t UART_getLine(uint8_t * a_buf, size_t a_buf_size);
 
 /* Fallback functions for exception handlers */

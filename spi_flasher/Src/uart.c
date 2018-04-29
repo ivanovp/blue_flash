@@ -100,6 +100,22 @@ uint8_t UART_getchar(void)
     return 0;
 }
 
+/**
+ * @brief UART_getchar Read a character from UART. Non-blocking!
+ * @return Character from UART or 0 if unsuccessful.
+ */
+uint8_t UART_getcharNB(void)
+{
+    uint8_t ch;
+
+    if (HAL_UART_Receive(&huart1, &ch, sizeof(ch), 0) == HAL_OK)
+    {
+        return ch;
+    }
+
+    return 0;
+}
+
 size_t UART_getLine(uint8_t * a_buf, size_t a_buf_size)
 {
     size_t idx = 0;

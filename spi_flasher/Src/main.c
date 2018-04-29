@@ -587,7 +587,8 @@ void StartDefaultTask(void const * argument)
       {
           dfu_flash_deinit();
       }
-      c = UART_getchar();
+      /* Using the non-blocking method to get a character from UART */
+      c = UART_getcharNB();
       if (c == '+')
       {
           set_spi_freq(TRUE);
